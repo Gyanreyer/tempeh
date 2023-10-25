@@ -1,0 +1,17 @@
+<link rel="import" href="../Layout.tmph.html" />
+
+<script #types>
+  /**
+   * @typedef  {Object} Props
+   * @property {boolean} [showForm=false]
+   * @property {Record<string, string>} [formProps={}]
+   * @property {string} [formProps.method="POST"]
+   */
+</script>
+<Layout @title="Welcome to my home page">
+  <h1>Hello, world!</h1>
+  <UnderlinedLink href="/about">About<svg slot="icon"></svg></UnderlinedLink>
+  <div #if="props.showForm">
+    <form props.formProps:...></form>
+  </div>
+</Layout>

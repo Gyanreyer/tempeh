@@ -1,0 +1,57 @@
+<link rel="import" href="./form.tmph.html" />
+<script #types>
+  /**
+   * @typedef {Object} ListItem
+   *
+   * @property {string} title
+   * @property {string} description
+   */
+
+  /**
+   * Renders a list of items.
+   *
+   * @param {Object} props
+   * @param {Object} [props.listAttrs]
+   * @param {string} [props.listAttrs.class="list"]
+   * @param {string} [props.listAttrs.style]
+   * @param {ListItem[]} [props.items=[]]
+   * @param {boolean} [props.isOrdered=false]
+   */
+</script>
+
+<ul
+  #if:$tagName="props.isOrdered: 'ol'"
+  :...="props.listAttrs"
+  #set:items="props.items"
+>
+  <ListItem #for:item="items" @item="item"></ListItem>
+</ul>
+
+<style>
+  ul {
+    padding: 0;
+    margin: 0;
+  }
+</style>
+
+<!-- Define a sub-component which can only be used within this file -->
+<template data-component="ListItem">
+  <script data-types>
+    /**
+     * @typedef {Object} Props
+     *
+     * @property {ListItem} item
+     */
+  </script>
+
+  <li>
+    <b $textContent="props.item.title"></b>:
+    <i $innerHTML="props.item.description"></i>
+  </li>
+
+  <style>
+    li {
+      margin: 0.5em 0;
+    }
+  </style>
+</template>
