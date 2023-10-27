@@ -1,36 +1,18 @@
-const whiteSpaceGroupRegex = /\s+/g;
-const spaceBetweenTagsRegex = / *[<>] */g;
-const selfClosingTagEndRegex = / *\/ *>/g;
-
-/**
- * @param {string} match
- */
-const trimWhitespace = (match) => match.trim();
+import minifyHTML from "@minify-html/node";
 
 /**
  * Template literal string tag which performs basic HTML minification on the string.
  *
- * @param {TemplateStringsArray} strings
- * @param {...*} values
+ * @param {string} htmlString
  */
-export function html(strings, ...values) {
-  const rawString = String.raw({ raw: strings }, ...values);
+export function html(htmlString) {
+  const minifiedHTML = minifyHTML.minify(Buffer.from(htmlString), {
+    do_not_minify_doctype: true,
+    keep_spaces_between_attributes: true,
+    ensure_spec_compliant_unquoted_attribute_values: true,
+    keep_html_and_head_opening_tags: true,
+    keep_closing_tags: true,
+  });
 
-  return rawString
-    .replace(
-      // Flatten all whitespace groups into a single space
-      whiteSpaceGroupRegex,
-      " "
-    )
-    .replace(
-      // Any leading or trailing spaces on tag delimiters can be removed entirely
-      spaceBetweenTagsRegex,
-      trimWhitespace
-    )
-    .replace(
-      // Slashes for self-closing tags aren't necessary in HTML, so remove the
-      // slash character
-      selfClosingTagEndRegex,
-      ">"
-    );
+  return minifiedHTML.toString("utf8");
 }
