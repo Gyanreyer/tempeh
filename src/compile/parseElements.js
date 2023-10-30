@@ -1,62 +1,31 @@
+import {
+  isAttrValueQuoteChar,
+  isNonWhiteSpaceChar,
+  isTagEndChar,
+  isTagStartChar,
+  isWhiteSpaceChar,
+} from "./charUtils.js";
+import { parseAttributes } from "./parseAttributes.js";
+import { makeCursor } from "./stringReaderCursor.js";
+
+/** @typedef {import("./parseAttributes").ElementAttributes} ElementAttributes */
+/** @typedef {import("./parseAttributes").RenderAttributes} RenderAttributes */
+
 /**
  * @typedef {Object} TmphTextNode
  * @property {string} textContent
  */
 
-/** @typedef {Record<string, string|boolean>} ElementAttributes */
-
-const renderAttributeNames = {
-  "#for": true,
-  "#if": true,
-  "#with": true,
-  "#data": true,
-  "#cache": true,
-  "#render": true,
-  "#scoped": true,
-  "#global": true,
-  "#external": true,
-  "#component": true,
-  "#md": true,
-  "#": true,
-};
-
-/**
- * @typedef {{ [key in keyof typeof renderAttributeNames]?: { modifier: string | null, value: string|boolean } }} RenderAttributes
- */
-
 /**
  * @typedef {Object} TmphElement
  * @property {string} tagName
- * @property {ElementAttributes} attributes - Normal attributes which will be included in the final HTML.
- * @property {RenderAttributes} renderAttributes - Special tagged attributes which inform how the element should be rendered, but will be stripped from the final HTML.
- * @property {TmphTextNode | TmphElement[]} children
+ * @property {import("./parseAttributes").ElementAttributes} attributes - Normal attributes which will be included in the final HTML.
+ * @property {import("./parseAttributes").RenderAttributes} renderAttributes - Special tagged attributes which inform how the element should be rendered, but will be stripped from the final HTML.
+ * @property {Array<TmphTextNode | TmphElement> | null} children
  * @property {TmphElement | null} parentElement
  */
 
 /** @typedef {TmphTextNode | TmphElement} TmphNode */
-
-const whiteSpaceChars = { " ": true, "\t": true, "\n": true, "\r": true };
-
-/**
- * @param {string} char
- * @returns {char is keyof typeof whiteSpaceChars}
- */
-const isWhiteSpaceChar = (char) => char in whiteSpaceChars;
-
-const attrValueQuoteChars = { "'": true, '"': true };
-
-/**
- * @param {string} char
- * @returns {char is keyof typeof attrValueQuoteChars}
- */
-const isAttrValueQuoteChar = (char) => char in attrValueQuoteChars;
-
-/**
- * @param {string} attributeName
- * @returns {attributeName is keyof typeof renderAttributeNames}
- */
-const isRenderAttribute = (attributeName) =>
-  attributeName in renderAttributeNames;
 
 /**
  *
@@ -76,8 +45,8 @@ export function parseTag(componentString, cursorPosition, parentElement) {
 
   const advanceCursor = () => {
     previousChar = currentChar;
+    currentChar = nextChar;
     ++cursorPosition;
-    currentChar = componentString[cursorPosition];
     nextChar = componentString[cursorPosition + 1];
 
     return currentChar;
@@ -107,19 +76,23 @@ export function parseTag(componentString, cursorPosition, parentElement) {
     advanceCursor();
   }
 
-  while (currentChar && isWhiteSpaceChar(currentChar)) {
-    advanceCursor();
-  }
-
   // Parse attributes
-  /** @type {ElementAttributes} */
+  /** @type {import("./parseAttributes").ElementAttributes} */
   let attributes = {};
   /** @type {ElementAttributes} */
   let renderAttributes = {};
 
   while (currentChar && currentChar !== ">") {
+    while (isWhiteSpaceChar(currentChar)) {
+      advanceCursor();
+    }
+
+    if (currentChar === ">") {
+      break;
+    }
+
     /** @type {string} */
-    let attributeName = currentChar;
+    let attributeName = "";
 
     let attributeHasValue = false;
 
@@ -146,13 +119,12 @@ export function parseTag(componentString, cursorPosition, parentElement) {
       advanceCursor();
     }
 
+    advanceCursor();
+
     if (!attributeHasValue) {
       attributes[attributeName] = true;
-      advanceCursor();
       continue;
     }
-
-    advanceCursor();
 
     /** @type {string} */
     let attributeValue = "";
@@ -170,6 +142,7 @@ export function parseTag(componentString, cursorPosition, parentElement) {
     if (isAttrValueQuoteChar(currentChar)) {
       /** @type {string} */
       const attrValueQuoteChar = currentChar;
+      advanceCursor();
       while (currentChar) {
         // Keep going until we hit the closing quote character,
         // skipping escaped quote characters
@@ -208,94 +181,60 @@ export function parseTag(componentString, cursorPosition, parentElement) {
   };
 }
 
-// /**
-//  * Takes a component file string and parses it into an array of objects representing the HTML.
-//  *
-//  * @param {string} componentString
-//  */
-// export function parseElements(componentString) {
-//   /** @type {Node[]} */
-//   const nodes = [];
+/**
+ * @param {string} char
+ */
+const isEndOfTagName = (char) => isWhiteSpaceChar(char) || isTagEndChar(char);
 
-//   /** @type {Node | null} */
-//   let currentNodeRoot = null;
-//   /** @type {Node | null} */
-//   let currentNode = null;
+/**
+ *
+ * @param {string} componentString
+ */
+export function parseElements(componentString) {
+  /** @type {Array<TmphNode>} */
+  const elements = [];
 
-//   let cursor = -1;
-//   const stringLength = componentString.length;
+  const cursor = makeCursor(componentString);
 
-//   while (++cursor < stringLength) {
-//     switch (componentString[cursor]) {
-//       case "<": {
-//         /** @type {Element} */
-//         const element = {
-//           tagName: "",
-//           attributes: {},
-//           children: [],
-//           parentElement: null,
-//         };
+  // Skip whitespace until we hit some content
+  let char = cursor.advanceUntil(isNonWhiteSpaceChar);
 
-//         let currentChar = "";
-//         let isNextCharEscaped = false;
+  if (char === "<") {
+    /** @type {string | null} */
+    let tagName = null;
 
-//         let tagName = "";
+    // Skip the "<" char
+    cursor.advanceCursor();
+    // Advance until we hit a non-whitespace character; this is the start of the tag name
+    cursor.advanceUntil(isNonWhiteSpaceChar);
+    // Collect all chars until we hit a whitespace character; this is the end of the tag name
+    tagName = cursor.advanceUntil(isEndOfTagName, true);
+    if (!tagName) {
+      throw new Error(
+        "Something went wrong while parsing tag name from component string"
+      );
+    }
 
-//         while (
-//           ++cursor < stringLength &&
-//           (currentChar = componentString[cursor]) !== ">"
-//         ) {
-//           if (currentChar in whiteSpaceChars && tagName) {
-//             break;
-//           }
+    // Collect all chars between the tag name and the end of the tag; these are the attributes.
+    // We'll need to do some extra work to parse them in to an object.
+    const attributeString = cursor.advanceUntil(isTagEndChar, true);
 
-//           tagName += currentChar;
-//         }
+    const { attributes, renderAttributes } = parseAttributes(
+      attributeString || ""
+    );
 
-//         element.tagName = tagName;
+    const isSelfClosing = cursor.peekPrev() === "/";
+    elements.push({
+      tagName,
+      attributes,
+      renderAttributes,
+      children: isSelfClosing ? null : [],
+      parentElement: null,
+    });
+  } else {
+    const textContent = cursor.advanceUntil(isTagStartChar, true) || "";
+    elements.push({ textContent });
+  }
 
-//         /** @type {string | null} */
-//         let attributeName = null;
-//         /** @type {string | true | null} */
-//         let attributeValue = null;
-
-//         while (
-//           ++cursor < stringLength &&
-//           (currentChar = componentString[cursor]) !== ">"
-//         ) {
-//           if (currentChar)
-//             if (currentChar in attrValueQuoteChars) {
-//               if (!attributeName) {
-//                 console.error(
-//                   "Found quoted attribute value without a name. This will not be included in the output HTML."
-//                 );
-//               }
-
-//               attributeValue = "";
-
-//               const attrValueOpeningQuoteChar = currentChar;
-//               while (
-//                 ++cursor < stringLength &&
-//                 (currentChar = componentString[cursor]) !==
-//                   attrValueOpeningQuoteChar
-//               ) {
-//                 if (currentChar === "\\") {
-//                   isNextCharEscaped = true;
-//                 } else if (
-//                   currentChar in attrValueQuoteChars &&
-//                   !isNextCharEscaped
-//                 ) {
-//                   // The value is now done!
-//                   break;
-//                 }
-
-//                 attributeValue += currentChar;
-//               }
-
-//               continue;
-//             }
-//         }
-//       }
-//     }
-//   }
-// }
+  return elements;
+}
