@@ -11,6 +11,7 @@ import {
 const renderAttributeNames = {
   "#for": true,
   "#if": true,
+  "#attr": true,
   "#with": true,
   "#data": true,
   "#cache": true,
@@ -31,7 +32,7 @@ const renderAttributeNames = {
  * @param {string} attributeName
  * @returns {attributeName is keyof typeof renderAttributeNames}
  */
-const isRenderAttribute = (attributeName) =>
+const isValidRenderAttributeName = (attributeName) =>
   attributeName in renderAttributeNames;
 
 /**
@@ -90,7 +91,9 @@ export function parseAttributes(attributeString) {
       break;
     }
 
-    const attributeName = cursor.advanceUntil(isEndOfAttributeName, true);
+    let attributeName = cursor.advanceUntil(isEndOfAttributeName, true);
+    /** @type {string | null} */
+    let attributeModifier = null;
 
     if (!attributeName) {
       console.error(
@@ -99,11 +102,41 @@ export function parseAttributes(attributeString) {
       break;
     }
 
+    let isRenderAttribute = false;
+
+    if (attributeName[0] === ":") {
+      // `:attrName` is a shorthand for `#attr:attrName`
+      attributeName = `#attr${attributeName}`;
+    }
+
+    if (attributeName[0] === "#") {
+      const splitAttributeName = attributeName.split(":");
+      if (isValidRenderAttributeName(splitAttributeName[0])) {
+        isRenderAttribute = true;
+        attributeName = splitAttributeName[0];
+        attributeModifier = splitAttributeName[1] || null;
+      } else {
+        console.error(
+          `Invalid render attribute name encountered: ${attributeName}. The final output may not work as expected.`
+        );
+      }
+    }
+
     // Advance to the next non-whitespace char. If it's an "=" then we have an attribute value. Otherwise this is a boolean attribute.
     char = cursor.advanceUntil(isNonWhiteSpaceChar);
     if (char !== "=") {
       // If we didn't find an "=", then this is a boolean attribute with no value. Continue on to the next attribute!
-      attributes[attributeName] = true;
+      if (isRenderAttribute) {
+        renderAttributes[
+          /** @type {keyof typeof renderAttributes} */ (attributeName)
+        ] = {
+          modifier: attributeModifier,
+          value: true,
+        };
+      } else {
+        attributes[attributeName] = true;
+      }
+
       continue;
     }
 
@@ -117,9 +150,20 @@ export function parseAttributes(attributeString) {
         "Failed to parse attribute value. The final output may not work as expected."
       );
       // If we reached the end of the string without finding a value to go along with the equal sign, set the value to an empty string
-      attributes[attributeName] = "";
+      if (isRenderAttribute) {
+        renderAttributes[
+          /** @type {keyof typeof renderAttributes} */ (attributeName)
+        ] = {
+          modifier: attributeModifier,
+          value: "",
+        };
+      } else {
+        attributes[attributeName] = "";
+      }
       break;
     }
+
+    let attributeValue = "";
 
     if (isAttrValueQuoteChar(char)) {
       // Advance past the quote char
@@ -128,33 +172,37 @@ export function parseAttributes(attributeString) {
       // If we found a quote char, we're dealing with a quoted attribute value, so collect the value between the quotes
       const quoteChar = char;
       // Advance until the closing quote, skipping escaped chars
-      const attributeValue = cursor.advanceUntil(
+      attributeValue = cursor.advanceUntil(
         (currentChar, _, prevChar) =>
           prevChar !== "\\" && currentChar === quoteChar,
         true
       );
 
       if (attributeValue) {
-        attributes[attributeName] = attributeValue;
         // Advance past the closing quote
         cursor.advanceCursor();
       }
     } else {
       // If we didn't find a quote char, we're dealing with an unquoted attribute value, so collect the value until we hit whitespace or the end of the tag
-      const attributeValue = cursor.advanceUntil(
-        isEndOfUnquotedAttributeValue,
-        true
-      );
-
-      attributes[attributeName] = attributeValue;
+      attributeValue = cursor.advanceUntil(isEndOfUnquotedAttributeValue, true);
 
       char = cursor.peek();
       if (isIllegalAttrChar(char)) {
         console.error(
           `Illegal character ${char} encountered while parsing attributes. The final output may not work as expected.`
         );
-        break;
       }
+    }
+
+    if (isRenderAttribute) {
+      renderAttributes[
+        /** @type {keyof typeof renderAttributes} */ (attributeName)
+      ] = {
+        modifier: attributeModifier,
+        value: attributeValue,
+      };
+    } else {
+      attributes[attributeName] = attributeValue;
     }
   }
 

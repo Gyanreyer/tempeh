@@ -158,5 +158,76 @@ describe("parseTag", () => {
     );
   });
 
-  test("");
+  test("should parse render attributes", () => {
+    /** @type {import("./parseElements.js").TmphElement} */
+    const outerDiv = {
+      tagName: "div",
+      attributes: {},
+      renderAttributes: {
+        "#if": {
+          modifier: "foo",
+          value: "props.hello",
+        },
+      },
+      children: [],
+      parent: null,
+    };
+
+    /** @type {import("./parseElements.js").TmphElement} */
+    const paragraph = {
+      tagName: "p",
+      attributes: {},
+      renderAttributes: {
+        "#md": {
+          modifier: null,
+          value: true,
+        },
+      },
+      children: ["Hello\n        "],
+      parent: outerDiv,
+    };
+    outerDiv.children.push(paragraph);
+
+    /** @type {import("./parseElements.js").TmphElement} */
+    const template = {
+      tagName: "template",
+      attributes: {},
+      renderAttributes: {
+        "#component": {
+          modifier: null,
+          value: "List",
+        },
+      },
+      children: [],
+      parent: outerDiv,
+    };
+    outerDiv.children.push(template);
+
+    const styleTag = {
+      tagName: "style",
+      attributes: {},
+      renderAttributes: {
+        "#scoped": {
+          modifier: null,
+          value: true,
+        },
+      },
+      children: [],
+      parent: outerDiv,
+    };
+    outerDiv.children.push(styleTag);
+
+    assert.deepStrictEqual(
+      parseElements(`
+      <div #if:foo="props.hello">
+        <p #md>
+          Hello
+        </p>
+        <template #component="List"></template>
+        <style #scoped></style>
+      </div>
+      `),
+      [outerDiv]
+    );
+  });
 });
