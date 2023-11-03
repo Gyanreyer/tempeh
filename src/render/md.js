@@ -5,8 +5,12 @@ import { html } from "./html.js";
  * Takes a markdown string and converts it into a minified HTML string.
  *
  * @param {string} markdownString
- * @returns {Promise<string>}
+ * @returns {string}
  */
-export async function md(markdownString) {
-  return html(await parse(markdownString));
+export function md(markdownString) {
+  return html(
+    parse(markdownString, {
+      async: false,
+    })
+  );
 }

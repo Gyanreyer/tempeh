@@ -12,6 +12,6 @@
   <h1>Hello, world!</h1>
   <UnderlinedLink href="/about">About<svg slot="icon"></svg></UnderlinedLink>
   <div #if="props.showForm">
-    <form props.formProps:...></form>
+    <form :...="props.formProps"></form>
   </div>
 </Layout>

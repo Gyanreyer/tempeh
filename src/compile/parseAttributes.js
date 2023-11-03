@@ -1,12 +1,12 @@
 import { makeCursor } from "./stringReaderCursor.js";
 import {
   isAttrValueQuoteChar,
+  isEndOfTagContentChar,
   isNonWhiteSpaceChar,
-  isTagEndChar,
   isWhiteSpaceChar,
 } from "./charUtils.js";
 
-/** @typedef {Record<string, string|boolean>} ElementAttributes */
+/** @typedef {Record<string, string|true>} ElementAttributes */
 
 const renderAttributeNames = {
   "#for": true,
@@ -21,11 +21,20 @@ const renderAttributeNames = {
   "#external": true,
   "#component": true,
   "#md": true,
-  "#": true,
+  "#types": true,
+  "#text": true,
+  "#html": true,
 };
 
+/** @typedef {string|true} AttributeValue */
+
+/** @typedef {{ [modifierKey: string]: AttributeValue }} AttributeWithModifiers */
+
 /**
- * @typedef {{ [key in keyof typeof renderAttributeNames]?: { modifier: string | null, value: string|boolean } }} RenderAttributes
+ * @typedef {{
+ *  "#for"?: { [modifierKey: string]: string|true },
+ *  "#if"?: { [modifierKey: string]: string|true },
+ * }} RenderAttributes
  */
 
 /**
@@ -50,21 +59,24 @@ const illegalAttrChars = {
  * @param {string} char
  * @returns {char is keyof typeof illegalAttrChars}
  */
-const isIllegalAttrChar = (char) => char in illegalAttrChars;
+const isIllegalAttrChar = (char) =>
+  char === "=" || char === '"' || char === "'" || char === "`" || char === "<";
 
 /**
  * @param {string} char
  * @returns {boolean}
  */
 const isEndOfAttributeName = (char) =>
-  char === "=" || isTagEndChar(char) || isWhiteSpaceChar(char);
+  char === "=" || isEndOfTagContentChar(char) || isWhiteSpaceChar(char);
 
 /**
  * @param {string} char
  * @returns {boolean}
  */
 const isEndOfUnquotedAttributeValue = (char) =>
-  isWhiteSpaceChar(char) || isTagEndChar(char) || isIllegalAttrChar(char);
+  isWhiteSpaceChar(char) ||
+  isEndOfTagContentChar(char) ||
+  isIllegalAttrChar(char);
 
 /**
  * @param {string} attributeString
@@ -72,7 +84,7 @@ const isEndOfUnquotedAttributeValue = (char) =>
 export function parseAttributes(attributeString) {
   /** @type {ElementAttributes} */
   const attributes = {};
-  /** @type {RenderAttributes} */
+  /** @type {Record<string, { [modifierKey: string]: string | true }>} */
   const renderAttributes = {};
 
   const cursor = makeCursor(attributeString);
@@ -82,7 +94,7 @@ export function parseAttributes(attributeString) {
     let char = cursor.advanceUntil(isNonWhiteSpaceChar);
 
     // If we hit the end of the string, we're done
-    if (!char || isTagEndChar(char)) {
+    if (!char || isEndOfTagContentChar(char)) {
       break;
     } else if (isIllegalAttrChar(char)) {
       console.error(
@@ -92,8 +104,7 @@ export function parseAttributes(attributeString) {
     }
 
     let attributeName = cursor.advanceUntil(isEndOfAttributeName, true);
-    /** @type {string | null} */
-    let attributeModifier = null;
+    let attributeModifier = "";
 
     if (!attributeName) {
       console.error(
@@ -102,24 +113,15 @@ export function parseAttributes(attributeString) {
       break;
     }
 
-    let isRenderAttribute = false;
-
     if (attributeName[0] === ":") {
       // `:attrName` is a shorthand for `#attr:attrName`
       attributeName = `#attr${attributeName}`;
     }
 
-    if (attributeName[0] === "#") {
-      const splitAttributeName = attributeName.split(":");
-      if (isValidRenderAttributeName(splitAttributeName[0])) {
-        isRenderAttribute = true;
-        attributeName = splitAttributeName[0];
-        attributeModifier = splitAttributeName[1] || null;
-      } else {
-        console.error(
-          `Invalid render attribute name encountered: ${attributeName}. The final output may not work as expected.`
-        );
-      }
+    const isRenderAttribute = attributeName[0] === "#";
+
+    if (isRenderAttribute) {
+      [attributeName, attributeModifier = ""] = attributeName.split(":");
     }
 
     // Advance to the next non-whitespace char. If it's an "=" then we have an attribute value. Otherwise this is a boolean attribute.
@@ -127,16 +129,26 @@ export function parseAttributes(attributeString) {
     if (char !== "=") {
       // If we didn't find an "=", then this is a boolean attribute with no value. Continue on to the next attribute!
       if (isRenderAttribute) {
-        renderAttributes[
-          /** @type {keyof typeof renderAttributes} */ (attributeName)
-        ] = {
-          modifier: attributeModifier,
-          value: true,
-        };
-      } else {
-        attributes[attributeName] = true;
+        if (attributeName === "#") {
+          // Skip # comment attributes
+          continue;
+        }
+
+        const [renderAttributeName, renderAttributeModifier = ""] =
+          attributeName.split(":");
+
+        if (isValidRenderAttributeName(attributeName)) {
+          (renderAttributes[attributeName] =
+            renderAttributes[attributeName] || {})[attributeModifier] = true;
+          continue;
+        } else {
+          console.error(
+            `Invalid render attribute name encountered: ${attributeName}. The final output may not work as expected.`
+          );
+        }
       }
 
+      attributes[attributeName] = true;
       continue;
     }
 
@@ -151,15 +163,23 @@ export function parseAttributes(attributeString) {
       );
       // If we reached the end of the string without finding a value to go along with the equal sign, set the value to an empty string
       if (isRenderAttribute) {
-        renderAttributes[
-          /** @type {keyof typeof renderAttributes} */ (attributeName)
-        ] = {
-          modifier: attributeModifier,
-          value: "",
-        };
-      } else {
-        attributes[attributeName] = "";
+        if (attributeName === "#") {
+          // Skip # comment attributes
+          break;
+        }
+
+        if (isValidRenderAttributeName(attributeName)) {
+          (renderAttributes[attributeName] =
+            renderAttributes[attributeName] || {})[attributeModifier] = "";
+          break;
+        } else {
+          console.error(
+            `Invalid render attribute name encountered: ${attributeName}. The final output may not work as expected.`
+          );
+        }
       }
+
+      attributes[attributeName] = "";
       break;
     }
 
@@ -195,15 +215,24 @@ export function parseAttributes(attributeString) {
     }
 
     if (isRenderAttribute) {
-      renderAttributes[
-        /** @type {keyof typeof renderAttributes} */ (attributeName)
-      ] = {
-        modifier: attributeModifier,
-        value: attributeValue,
-      };
-    } else {
-      attributes[attributeName] = attributeValue;
+      if (attributeName === "#") {
+        // Skip # comment attributes
+        continue;
+      }
+
+      if (isValidRenderAttributeName(attributeName)) {
+        (renderAttributes[attributeName] =
+          renderAttributes[attributeName] || {})[attributeModifier] =
+          attributeValue;
+        continue;
+      } else {
+        console.error(
+          `Invalid render attribute name encountered: ${attributeName}. The final output may not work as expected.`
+        );
+      }
     }
+
+    attributes[attributeName] = attributeValue;
   }
 
   return {

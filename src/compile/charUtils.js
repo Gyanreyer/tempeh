@@ -1,31 +1,32 @@
-const whiteSpaceChars = { " ": true, "\t": true, "\n": true, "\r": true };
-
 /**
  * @param {string} char
  */
-export const isWhiteSpaceChar = (char) => char in whiteSpaceChars;
+export const isWhiteSpaceChar = (char) =>
+  char === " " || char === "\t" || char === "\n" || char === "\r";
 
 /**
  * @param {string} char
  */
 export const isNonWhiteSpaceChar = (char) => !isWhiteSpaceChar(char);
 
-const attrValueQuoteChars = { "'": true, '"': true, "`": true };
-
 /**
  * @param {string} char
- * @returns {char is keyof typeof attrValueQuoteChars}
  */
-export const isAttrValueQuoteChar = (char) => char in attrValueQuoteChars;
+export const isAttrValueQuoteChar = (char) =>
+  char === "'" || char === '"' || char === "`";
 
 /**
  * @param {string} char
  */
 export const isTagStartChar = (char) => char === "<";
 
-const tagEndChar = { ">": true, "/": true };
+/**
+ * @param {string} char
+ */
+export const isTagEndChar = (char) => char === ">";
 
 /**
  * @param {string} char
  */
-export const isTagEndChar = (char) => char in tagEndChar;
+export const isEndOfTagContentChar = (char) =>
+  isTagEndChar(char) || char === "/";

@@ -1,6 +1,30 @@
 import { escapeText } from "./escapeText.js";
 
 /**
+ *
+ * @param {string} attributeName
+ * @param {string|boolean|null|undefined} attributeValue
+ * @returns {string}
+ */
+export function renderAttributeToString(attributeName, attributeValue) {
+  if (attributeName) {
+    if (typeof attributeValue === "string") {
+      return ` ${attributeName}="${escapeText(attributeValue)}"`;
+    } else if (attributeValue === true) {
+      return ` ${attributeName}`;
+    } else if (attributeValue !== false) {
+      console.error(
+        `Invalid attribute value ${JSON.stringify(
+          attributeValue
+        )} provided for attribute ${attributeName}`
+      );
+    }
+  }
+
+  return "";
+}
+
+/**
  * @param {Record<string, string | boolean | null | undefined>} attributesObject
  */
 export function renderAttributes(attributesObject) {

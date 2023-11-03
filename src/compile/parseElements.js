@@ -1,5 +1,6 @@
 import {
   isAttrValueQuoteChar,
+  isEndOfTagContentChar,
   isNonWhiteSpaceChar,
   isTagEndChar,
   isTagStartChar,
@@ -25,7 +26,8 @@ import { makeCursor } from "./stringReaderCursor.js";
 /**
  * @param {string} char
  */
-const isEndOfTagName = (char) => isWhiteSpaceChar(char) || isTagEndChar(char);
+const isEndOfTagName = (char) =>
+  isWhiteSpaceChar(char) || isEndOfTagContentChar(char);
 
 /**
  *

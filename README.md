@@ -337,11 +337,10 @@ The attribute value should be a JavaScript expression which evaluates to an inte
 </ul>
 ```
 
-##### `#for:range:{index}`
+##### `#for-range:{index}`
 
-For cases where you just need to arbitrarily loop a certain number of times, `#for` can be extended with a `:range` modifier.
-In this case, the attribute should take a JavaScript expression which evaluates to an array of 2 integers:
-the start and end index of the range (both inclusive).
+For cases where you just need to arbitrarily loop a certain number of times, you can use the `#for-range` attribute.
+The attribute should take a JavaScript expression which evaluates to an array of 2 integers representing the start and end index of the range (both inclusive).
 
 If the start index is higher than the end, the loop will count down instead of up.
 
@@ -349,12 +348,12 @@ For even more advanced cases where you may wish to skip certain parts of a range
 
 ```html
 <ol>
-  <li #for:range:i="[0, 2]" $text="i" />
+  <li #for-range:i="[0, 2]" #text="i" />
 </ol>
 <ol>
   <li
     #="Count up to 3 and then back down to 1"
-    #for:range:i="[[1,3], [2,1]]" $text="i"
+    #for-range:i="[[1,3], [2,1]]" #text="i"
   />
 </ol>
 
@@ -397,34 +396,6 @@ This attribute will be stripped from the rendered output.
 </div>
 ```
 
-##### `#if:{attr}`
-
-A `#if` attribute can also accept an attribute modifier to conditionally apply an attribute instead of conditionally rendering.
-
-In this case, the attribute will take a special string composed of a conditional JavaScript expression which evaluates to either true or false, a ''"`->` arrow symbol, and then a JavaScript expression which evaluates to the value that the attribute should be set to.
-
-```html
-<!-- list.tmph.html -->
-<ul
-  #if:$tagName="props.isOrdered -> 'ol'"
-  #if:hidden="props.isHidden -> true"
->
-  <li #for:,i="props.items" $textContent="i"></li>
-</ul>
-
-<!-- list.render({ isOrdered: false, isHidden: true, items: ["a","b"] }) -->
-<ul hidden>
-  <li>0</li>
-  <li>1</li>
-</ul>
-
-<!-- list.render({ isOrdered: true, isHidden: false, items: ["a","b"] }) -->
-<ol>
-  <li>0</li>
-  <li>1</li>
-</ol>
-```
-
 #### `#with:{var}`
 
 You can set a `#with` attribute on an element with an attribute modifier for a variable name
@@ -465,7 +436,7 @@ Template fragments can still have `$` and `#` template functions applied to them
     <br/>And here's another line of text!
   </template>
 </p>
-<template #for:range:i="0 -> 10">
+<template #for-range:i="[0, 10]">
 ```
 
 ## Scripts
