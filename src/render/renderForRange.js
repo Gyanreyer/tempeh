@@ -13,7 +13,11 @@ export function renderForRange(range, render) {
 
   if (typeof range[0] === "number" && typeof range[1] === "number") {
     const incrementValue = Math.sign(range[1] - range[0]);
-    for (let i = range[0]; i < range[1]; i += incrementValue) {
+    for (
+      let i = range[0];
+      incrementValue > 0 ? i <= range[1] : i >= range[1];
+      i += incrementValue
+    ) {
       outputString += render(i);
     }
   } else {

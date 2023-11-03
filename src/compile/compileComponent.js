@@ -1,5 +1,6 @@
 import { readFileSync } from "node:fs";
 import { XMLParser } from "fast-xml-parser";
+import esbuild from "esbuild";
 import { renderAttributeToString } from "../render/renderAttributes.js";
 import { md } from "../render/md.js";
 
@@ -92,10 +93,9 @@ const processExpressionString = (expressionString) => {
 
 /**
  * @param {ParsedTag | TextNode} element
+ * @param {Record<string, string>} imports
  */
-const render = (element) => {
-  const imports = {};
-
+const render = (element, imports) => {
   if (isTextNode(element)) {
     return element.__text;
   }
@@ -201,13 +201,13 @@ const render = (element) => {
       const { code, evaluatedVariableName } =
         processExpressionString(attributeValue);
 
-      imports.escapeText = "@tmph/render/escapeText.js";
+      imports.escapeText = "#tmph/render/escapeText.js";
 
       // Escape HTML characters from text content
-      childrenString = `(()=>{
+      childrenString = `\$\{(()=>{
         ${code}
         return escapeText(String(${evaluatedVariableName}));
-      })()`;
+      })()\}`;
     }
   } else if ("#html" in attributes) {
     const attributeValue = attributes["#html"];
@@ -218,15 +218,15 @@ const render = (element) => {
       const { code, evaluatedVariableName } =
         processExpressionString(attributeValue);
 
-      childrenString = `(()=>{
+      childrenString = `\$\{(()=>{
         ${code}
         return String(${evaluatedVariableName});
-      })()`;
+      })()\}`;
     }
   } else if (elementChildren.length > 0 || !(tagName in voidTagNames)) {
     childrenString = "";
     for (const child of elementChildren) {
-      childrenString += render(child);
+      childrenString += render(child, imports);
     }
   }
 
@@ -236,7 +236,7 @@ const render = (element) => {
     if (!hasDynamicContent) {
       childrenString = md(childrenString);
     } else {
-      imports.md = "@tmph/render/md.js";
+      imports.md = "#tmph/render/md.js";
 
       childrenString = `\$\{md(\`${childrenString}\`)\}`;
     }
@@ -297,7 +297,7 @@ const render = (element) => {
 
     const itemName = modifier || "__tmph_item";
 
-    imports.renderForRange = "@tmph/render/renderForRange.js";
+    imports.renderForRange = "#tmph/render/renderForRange.js";
 
     renderedElement = `\$\{(()=> {
           ${code};
@@ -335,15 +335,31 @@ export function compileComponent(componentPath) {
 
   let renderString = "";
 
+  /** @type {Record<string, string>} */
+  const imports = {};
+
   for (const element of elements) {
-    renderString += render(element);
+    renderString += render(element, imports);
   }
 
   // writeFileSync("index.html", renderString);
 
-  return /* js */ `
+  return esbuild.transformSync(
+    `
+    ${(() => {
+      let importsString = "";
+
+      for (const importMethod in imports) {
+        importsString += `import {${importMethod}} from "${imports[importMethod]}";`;
+      }
+
+      return importsString;
+    })()}
     export function render(params) {
       return \`${renderString}\`;
+    }`,
+    {
+      minify: true,
     }
-  `;
+  );
 }
