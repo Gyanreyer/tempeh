@@ -27,8 +27,11 @@ const replaceEscapedChar = (matchChar) =>
 /**
  * Takes a string which could potentially include unsafe HTML characters and escapes them.
  *
- * @param {string} text
+ * @param {unknown} text
  */
 export function escapeText(text) {
+  if (typeof text !== "string") {
+    return "";
+  }
   return text.replace(escapedCharRegex, replaceEscapedChar);
 }

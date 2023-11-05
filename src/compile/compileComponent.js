@@ -1,4 +1,4 @@
-import { readFileSync } from "node:fs";
+import { readFileSync, stat, writeFileSync } from "node:fs";
 import { XMLParser } from "fast-xml-parser";
 import esbuild from "esbuild";
 import { renderAttributeToString } from "../render/renderAttributes.js";
@@ -59,35 +59,38 @@ const isTextNode = (element) => "__text" in element;
  */
 const parseElements = (componentString) => parser.parse(componentString);
 
-const dynamicModifierAttributeNameRegex = /^#(for|for-range|if|attr|with)/;
-
+/** Generates a random string which can be used for scoped variable names */
 const getRandomString = () => Math.random().toString(36).slice(2);
+
+// Regex matches the last line of a JavaScript expression
+const lastLineOfExpressionRegex = /;?(.+)[;\s]?$/;
 
 /**
  * @param {unknown} expressionString
  */
-const processExpressionString = (expressionString) => {
+const processExpressionString = (
+  expressionString,
+  resultVariableName = `__tmph_expr__${getRandomString()}`
+) => {
   if (typeof expressionString !== "string") {
     throw new Error("Received invalid expression value");
   }
 
-  const expressionLines = expressionString.split(";");
-  let lastExpressionLine = expressionLines.pop();
-  while (expressionLines.length > 0 && !lastExpressionLine?.trim()) {
-    lastExpressionLine = expressionLines.pop();
+  const lastLineOfExpressionMatch = expressionString.match(
+    lastLineOfExpressionRegex
+  );
+
+  if (!lastLineOfExpressionMatch) {
+    throw new Error(`Failed to parse expression: "${expressionString}"`);
   }
 
-  if (!lastExpressionLine) {
-    throw new Error("Received empty expression");
-  }
-
-  const evaluatedVariableName = `expr__${getRandomString()}`;
+  const lastExpressionLine = lastLineOfExpressionMatch[0];
+  const code = expressionString.slice(0, lastLineOfExpressionMatch.index);
 
   return {
-    code: `${
-      expressionLines.length > 0 ? expressionLines.join(";") + ";" : ""
-    }const ${evaluatedVariableName} = (${lastExpressionLine});`,
-    evaluatedVariableName,
+    code: `${code}
+    let ${resultVariableName} = (${lastExpressionLine});`,
+    resultVariableName,
   };
 };
 
@@ -118,119 +121,192 @@ const render = (element, imports) => {
     throw new Error("Failed to find tag name for element");
   }
 
+  const allAttributes = element[":@"];
+
   /**
-   * @type {Record<string, string | true | Record<string, string>>}
+   * @type {Array<{ name: "#if" | "#for" | "#for-range" | "#with"; modifier: string; value: string; }> | null}
+   * Render attributes which involve creating a new block scope, ie #if, #for, #for-range, and #with
+   * The order of these attributes is important, so we need to gather them in an array and then evaluate them
+   * in reverse order so the innermost scope is evaluated first.
    */
-  const attributes = element[":@"] || {};
+  let scopedRenderAttributes = null;
+  let shouldParseChildrenAsMarkdown = false;
 
-  let openingTagContents = tagName;
+  let attributesString = "";
 
-  let wrappingContentStart = "";
-  let wrappingContentEnd = "";
+  for (let attributeName in allAttributes) {
+    const attributeValue = allAttributes[attributeName];
 
-  for (const attributeName in element[":@"]) {
-    const attributeValue = element[":@"][attributeName];
-    if (attributeName[0] === "#" || attributeName[0] === ":") {
-      if (attributeName === "#") {
-        // Skip comment attributes
-        continue;
-      } else if (attributeName.startsWith("#if")) {
-        const { code, evaluatedVariableName } =
-          processExpressionString(attributeValue);
+    if (attributeName[0] === ":") {
+      // :attrName is a shorthand for #attr:attrName
+      attributeName = `#attr${attributeName}`;
+    }
 
-        wrappingContentStart = `\$\{(()=>{ ${code} return ${evaluatedVariableName} ? \``;
-        wrappingContentEnd = `\` : ""; })()\}`;
-      } else if (
-        // `:attrName` is a shorthand for `#attr:attrName`
-        attributeName[0] === ":" ||
-        attributeName.startsWith("#attr")
-      ) {
-        let modiferAttributeName = attributeName.split(":")[1];
-
-        const { code, evaluatedVariableName } =
-          processExpressionString(attributeValue);
-
-        openingTagContents += `\$\{(()=>{
-          ${code}
-          if(typeof ${evaluatedVariableName} === "string") {
-            return \` ${modiferAttributeName}="\$\{${evaluatedVariableName}\}"\`;
-          }
-
-          return ${evaluatedVariableName} ? " ${modiferAttributeName}" : "";
-        })()\}`;
-      } else if (dynamicModifierAttributeNameRegex.test(attributeName)) {
-        if (typeof attributeValue !== "string") {
-          console.error(`${attributeName} attribute requires a value`);
-          continue;
-        }
-
-        delete attributes[attributeName];
-        const [baseAttributeName, attributeModifier] = attributeName.split(":");
-
-        if (!attributeModifier) {
-          console.error(
-            "#with attribute provided without a variable name modifier"
-          );
-          continue;
-        }
-
-        if (typeof attributes[baseAttributeName] !== "object") {
-          attributes[baseAttributeName] = {};
-        }
-        /** @type {Record<string,string>} */ (attributes[baseAttributeName])[
-          attributeModifier
-        ] = attributeValue;
-      }
-    } else {
-      openingTagContents += ` ${renderAttributeToString(
+    if (attributeName[0] !== "#") {
+      // Pass static attributes through to the output
+      attributesString += renderAttributeToString(
         attributeName,
         attributeValue
-      )}`;
+      );
+      continue;
+    }
+
+    if (attributeName === "#") {
+      // Skip comment attributes
+      continue;
+    }
+
+    const [baseAttributeName, attributeModifier] = attributeName.split(":");
+
+    switch (baseAttributeName) {
+      case "#md": {
+        /**
+         * #md
+         * attributeValue is ignored
+         * If the element has children, they will be parsed as markdown
+         */
+        shouldParseChildrenAsMarkdown = true;
+        break;
+      }
+      case "#tagname": {
+        /**
+         * #tagname="expression"
+         * attributeValue is the expression which should be evaluated to a string which will
+         * replace the element's tag name.
+         * If the expression evaluates to a falsey value, the default tag name will be used.
+         * If the expression evaluates to a non-string value, the default tag name will be used.
+         */
+        const { code, resultVariableName } =
+          processExpressionString(attributeValue);
+
+        tagName = `\$\{(()=>{
+          ${code}
+          if(${resultVariableName} && typeof ${resultVariableName} === "string"){
+            return ${resultVariableName};
+          }
+          return "${tagName}";
+        })()\}`;
+        break;
+      }
+      case "#attr": {
+        /**
+         * #attr:attrName="expression"
+         * attributeModifier is the attribute name
+         * attributeValue is the expression which should be evaluated to the attribute's value
+         */
+        const { code, resultVariableName } =
+          processExpressionString(attributeValue);
+
+        imports.renderAttributeToString = "#tmph/render/renderAttributes.js";
+
+        // Attribute spreading syntax means the attribute value should be an object
+        // and we should spread the object's properties into the element's attributes
+        if (attributeModifier === "...") {
+          const attributesStringVariableName = `__tmph_attrString_${getRandomString()}`;
+
+          attributesString += `\$\{(()=>{
+            ${code}
+            if(!${resultVariableName}) {
+              return "";
+            }
+            if(typeof ${resultVariableName} !== "object"){
+              console.warn(\`Attempted to spread non-object value \$\{${resultVariableName}\} onto element attributes\`);
+              return "";
+            }
+
+            let ${attributesStringVariableName} = "";
+
+            for(const key in ${resultVariableName}) {
+              ${attributesStringVariableName} += renderAttributeToString(key, ${resultVariableName}[key]);
+            }
+
+            return ${attributesStringVariableName};
+          })()\}`;
+        } else {
+          attributesString += `\$\{(()=>{
+            ${code}
+
+            return renderAttributeToString("${attributeModifier}", ${resultVariableName});
+          })()\}`;
+        }
+
+        break;
+      }
+      case "#text": {
+        /**
+         * #text="expression"
+         * attributeValue is the expression which should be evaluated to an escaped string which will
+         * replace the element's children.
+         */
+        imports.escapeText = "#tmph/render/escapeText.js";
+        const { code, resultVariableName } =
+          processExpressionString(attributeValue);
+
+        elementChildren[0] = {
+          __text: `\$\{escapeText((()=>{
+            ${code}
+            return ${resultVariableName};
+          })())\}`,
+        };
+        elementChildren.length = 1;
+
+        break;
+      }
+      case "#html": {
+        /**
+         * #html="expression"
+         * attributeValue is the expression which should be evaluated to an HTML content string which will
+         * replace the element's children without being escaped.
+         */
+        imports.html = "#tmph/render/html.js";
+        const { code, resultVariableName } =
+          processExpressionString(attributeValue);
+
+        elementChildren[0] = {
+          __text: `\$\{html((()=>{
+            ${code}
+            return ${resultVariableName};
+          })())\}`,
+        };
+        elementChildren.length = 1;
+        break;
+      }
+      case "#with":
+      case "#if":
+      case "#for":
+      case "#for-range": {
+        if (typeof attributeValue !== "string") {
+          // Continue to the default error case if the attribute value is not a string
+          continue;
+        }
+
+        (scopedRenderAttributes ??= []).push({
+          name: baseAttributeName,
+          modifier: attributeModifier,
+          value: attributeValue,
+        });
+        break;
+      }
+
+      default:
+        console.error(
+          `Received invalid render attribute ${attributeName}${
+            attributeValue === true ? "" : `=${attributeValue}`
+          }. Check for typos.`
+        );
     }
   }
 
-  /** @type {string | null} */
-  let childrenString = null;
+  /** @type {string} */
+  let childrenString = "";
 
-  if ("#text" in attributes) {
-    const attributeValue = attributes["#text"];
-
-    if (typeof attributeValue !== "string") {
-      console.error("#text attribute provided without a string value");
-    } else {
-      const { code, evaluatedVariableName } =
-        processExpressionString(attributeValue);
-
-      imports.escapeText = "#tmph/render/escapeText.js";
-
-      // Escape HTML characters from text content
-      childrenString = `\$\{(()=>{
-        ${code}
-        return escapeText(String(${evaluatedVariableName}));
-      })()\}`;
-    }
-  } else if ("#html" in attributes) {
-    const attributeValue = attributes["#html"];
-
-    if (typeof attributeValue !== "string") {
-      console.error("#html attribute provided without a string value");
-    } else {
-      const { code, evaluatedVariableName } =
-        processExpressionString(attributeValue);
-
-      childrenString = `\$\{(()=>{
-        ${code}
-        return String(${evaluatedVariableName});
-      })()\}`;
-    }
-  } else if (elementChildren.length > 0 || !(tagName in voidTagNames)) {
-    childrenString = "";
+  if (elementChildren.length > 0 || !(tagName in voidTagNames)) {
     for (const child of elementChildren) {
       childrenString += render(child, imports);
     }
   }
 
-  if (childrenString && "#md" in attributes) {
+  if (childrenString && shouldParseChildrenAsMarkdown) {
     // Presence of #md attribute means we should parse the children as markdown
     const hasDynamicContent = childrenString.includes("${");
     if (!hasDynamicContent) {
@@ -242,73 +318,88 @@ const render = (element, imports) => {
     }
   }
 
-  let renderedElement = `<${openingTagContents}>`;
+  const isFragment = tagName === "_";
+
+  let renderedElement = isFragment ? "" : `<${tagName}${attributesString}>`;
   if (childrenString !== null) {
-    renderedElement += `${childrenString}</${tagName}>`;
+    renderedElement += childrenString;
+    if (!isFragment) {
+      renderedElement += `</${tagName}>`;
+    }
   }
 
-  if ("#for" in attributes) {
-    if (typeof attributes["#for"] !== "object") {
-      throw new Error("Failed to parse #for attribute");
-    }
-    const modifierKeys = Object.keys(attributes["#for"]);
-    const modifier = modifierKeys[0];
-
-    if (modifierKeys.length > 1) {
-      console.error(`Multiple #for attributes set when only one is allowed.`);
-    }
-
-    const attributeValue = attributes["#for"][modifier];
-
-    const { code, evaluatedVariableName } =
-      processExpressionString(attributeValue);
-
-    const [itemName = "__tmph_item", indexName = "__tmph_index"] =
-      modifier.split(",");
-
-    renderedElement = `\$\{(()=> {
-          ${code};
-          let __tmph_renderedString = "";
-          let ${indexName} = 0;
-          for(const ${itemName} of ${evaluatedVariableName}){
-            __tmph_renderedString += \`${renderedElement}\`;
-            ++${indexName};
+  if (scopedRenderAttributes) {
+    // Evaluating scoped render attributes in reverse order so the innermost scope is evaluated first
+    for (const attribute of scopedRenderAttributes.reverse()) {
+      switch (attribute.name) {
+        case "#with": {
+          if (!attribute.modifier) {
+            console.error(`#with attribute requires a modifier`);
+            continue;
           }
-          return __tmph_renderedString;
-        })()\}`;
-  } else if ("#for-range" in attributes) {
-    if (typeof attributes["#for-range"] !== "object") {
-      throw new Error("Failed to parse #for-range attribute");
-    }
 
-    const modifierKeys = Object.keys(attributes["#for-range"]);
-    const modifier = modifierKeys[0];
-
-    if (modifierKeys.length > 1) {
-      console.error(
-        `Multiple #for-range attributes set when only one is allowed.`
-      );
-    }
-
-    const attributeValue = attributes["#for-range"][modifier];
-
-    const { code, evaluatedVariableName } =
-      processExpressionString(attributeValue);
-
-    const itemName = modifier || "__tmph_item";
-
-    imports.renderForRange = "#tmph/render/renderForRange.js";
-
-    renderedElement = `\$\{(()=> {
-          ${code};
-
-          return renderForRange(${evaluatedVariableName}, (${itemName}) => {
+          renderedElement = `\$\{(()=>{
+            ${processExpressionString(attribute.value, attribute.modifier).code}
             return \`${renderedElement}\`;
-          });
-        })()\}`;
-  }
+          })()\}`;
+          break;
+        }
+        case "#if": {
+          const { code, resultVariableName } = processExpressionString(
+            attribute.value
+          );
 
-  renderedElement = `${wrappingContentStart}${renderedElement}${wrappingContentEnd}`;
+          renderedElement = `\$\{(()=>{
+            ${code}
+            return ${resultVariableName} ? \`${renderedElement}\` : "";
+          })()\}`;
+          break;
+        }
+        case "#for": {
+          const { code, resultVariableName } = processExpressionString(
+            attribute.value
+          );
+
+          const [
+            itemName = `__tmph_item_${getRandomString()}`,
+            indexName = `__tmph_index_${getRandomString()}`,
+          ] = attribute.modifier.split(",");
+
+          const renderStringVariableName = `__tmph_render_${getRandomString()}`;
+
+          renderedElement = `\$\{(()=> {
+                ${code}
+                let ${renderStringVariableName} = "";
+                let ${indexName} = 0;
+                for(const ${itemName} of ${resultVariableName}){
+                  ${renderStringVariableName} += \`${renderedElement}\`;
+                  ++${indexName};
+                }
+                return \`${renderStringVariableName}\`;
+              })()\}`;
+          break;
+        }
+        case "#for-range": {
+          const { code, resultVariableName } = processExpressionString(
+            attribute.value
+          );
+
+          const itemName =
+            attribute.modifier || `__tmph_item_${getRandomString()}`;
+
+          imports.renderForRange = "#tmph/render/renderForRange.js";
+
+          renderedElement = `\$\{(()=> {
+                ${code};
+                return renderForRange(${resultVariableName}, (${itemName}) => {
+                  return \`${renderedElement}\`;
+                });
+              })()\}`;
+          break;
+        }
+      }
+    }
+  }
 
   return renderedElement;
 };
@@ -329,8 +420,6 @@ export function compileComponent(componentPath) {
 
   const componentString = readFileSync(componentPath, "utf8");
 
-  // const elements = parseElements(componentString);
-
   const elements = parseElements(componentString);
 
   let renderString = "";
@@ -342,10 +431,10 @@ export function compileComponent(componentPath) {
     renderString += render(element, imports);
   }
 
-  // writeFileSync("index.html", renderString);
-
-  return esbuild.transformSync(
-    `
+  writeFileSync(
+    `index.js`,
+    esbuild.transformSync(
+      `
     ${(() => {
       let importsString = "";
 
@@ -358,8 +447,9 @@ export function compileComponent(componentPath) {
     export function render(params) {
       return \`${renderString}\`;
     }`,
-    {
-      minify: true,
-    }
+      {
+        minify: true,
+      }
+    ).code
   );
 }

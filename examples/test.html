@@ -1,1 +1,5 @@
-<div #for-range:v="[[0,5],[3,1]]" #text="v"></div>
+<_ #with:rng="[[1,3]]">
+  <div #with:hi="Math.random()" #for-range:i="rng" #with:hello="hi * i">
+    <p :...="{hi,i,hello}" />
+  </div>
+</_>
