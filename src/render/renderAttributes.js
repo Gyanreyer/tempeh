@@ -1,4 +1,10 @@
-import escapeText from "./escapeText.js";
+// Regex matches double quotes that are not escaped with a \
+const unescapedQuoteRegex = /(^")|([^\\]")/g;
+
+/** @param {string} attributeValue */
+const escapeAttribute = (attributeValue) => {
+  return attributeValue.replace(unescapedQuoteRegex, '\\"');
+};
 
 /** @typedef {string|boolean|null|undefined} AttributeValue */
 
@@ -28,7 +34,7 @@ export default async function renderAttributeToString(
     typeof attributeValue === "string" ||
     typeof attributeValue === "number"
   ) {
-    return ` ${attributeName}="${escapeText(String(attributeValue))}"`;
+    return ` ${attributeName}="${escapeAttribute(String(attributeValue))}"`;
   } else if (Boolean(attributeValue)) {
     return ` ${attributeName}`;
   }

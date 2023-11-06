@@ -371,13 +371,16 @@ const render = async (element, imports, meta) => {
     renderedElement += childrenString;
 
     if (!isFragment) {
-      if (element.tagName in voidTagNames) {
-        console.warn(
-          `Void tag <${element.tagName}> unexpectedly received child content`
-        );
-      }
+      const isVoid = element.tagName in voidTagNames;
 
-      renderedElement += `</${element.tagName}>`;
+      if (!isVoid || Boolean(childrenString)) {
+        if (isVoid) {
+          console.warn(
+            `Void tag <${element.tagName}> unexpectedly received child content`
+          );
+        }
+        renderedElement += `</${element.tagName}>`;
+      }
     }
   }
 
@@ -507,6 +510,35 @@ export async function compileComponent(componentPath) {
 
   const renderString = (await Promise.all(renderPromises)).join("\n");
 
+  let inlineComponentsString = "";
+
+  if (meta.inlineComponents) {
+    for (const componentName in meta.inlineComponents) {
+      const subComponentRenderPromises = [];
+
+      for (const element of meta.inlineComponents[componentName]) {
+        if (typeof element === "string") {
+          subComponentRenderPromises.push(element);
+        } else {
+          subComponentRenderPromises.push(render(element, imports, meta));
+        }
+      }
+
+      inlineComponentsString += `
+        const ${componentName} = { render: async ({ props, slot, namedSlots }) => {
+          return \`${(await Promise.all(subComponentRenderPromises)).join(
+            "\n"
+          )}\`;
+        }};
+      `;
+    }
+  }
+
+  let importsString = "";
+  for (const importMethod in imports) {
+    importsString += `import ${importMethod} from "${imports[importMethod]}";`;
+  }
+
   const outputPath = path.resolve(
     componentDirectory,
     `./${path.basename(componentPath, ".html")}.js`
@@ -516,15 +548,8 @@ export async function compileComponent(componentPath) {
     outputPath,
     esbuild.transformSync(
       `
-    ${(() => {
-      let importsString = "";
-
-      for (const importMethod in imports) {
-        importsString += `import ${importMethod} from "${imports[importMethod]}";`;
-      }
-
-      return importsString;
-    })()}
+    ${importsString}
+    ${inlineComponentsString}
     export async function render({ props, slot, namedSlots }) {
       return \`${renderString}\`;
     }`,
