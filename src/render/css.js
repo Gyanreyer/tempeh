@@ -74,7 +74,7 @@ const scopeSelector = (selector, scopedAttributeSelector) => {
  *
  * @returns {string}
  */
-export function css(cssString, scopedComponentID, options) {
+export default function css(cssString, scopedComponentID, options) {
   /** @type {SelectorComponent} */
   const scopedAttributeSelector = {
     type: "attribute",

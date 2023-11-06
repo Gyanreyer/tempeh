@@ -1,8 +1,16 @@
-import { readFileSync, stat, writeFileSync } from "node:fs";
-import { XMLParser } from "fast-xml-parser";
+import { readFileSync, writeFileSync } from "node:fs";
+import path from "node:path";
+
 import esbuild from "esbuild";
-import { renderAttributeToString } from "../render/renderAttributes.js";
-import { md } from "../render/md.js";
+
+import { parseElements } from "./parseElements.js";
+
+import renderAttributeToString from "../render/renderAttributes.js";
+import md from "../render/md.js";
+import { processExpressionString } from "./parseExpressionString.js";
+import { getRandomString } from "../utils/getRandomString.js";
+
+/** @typedef {import("./parseElements.js").ParsedElement} ParsedElement */
 
 // HTML tag names that don't have closing tags
 const voidTagNames = {
@@ -22,106 +30,16 @@ const voidTagNames = {
   wbr: true,
 };
 
-const parser = new XMLParser({
-  // Process tag attributes
-  ignoreAttributes: false,
-  // Value-less attributes should be treated as booleans
-  allowBooleanAttributes: true,
-  // Text content should always be set as an `__text` property on an object even if there are no other children or attributes
-  alwaysCreateTextNode: true,
-  textNodeName: "__text",
-  // Parsed elements should be returned as an array of objects to preserve order
-  preserveOrder: true,
-  // preserveOrder means all attributes will be grouped under a `:@` property, so we don't need
-  // any additional prefixes on top of that
-  attributeNamePrefix: "",
-  // Skip DOCTYPE entities and XML declarations
-  processEntities: false,
-  ignoreDeclaration: true,
-  // Don't remove namespace prefixes from tag names or attributes
-  removeNSPrefix: false,
-});
-
-/** @typedef {{ __text: string }} TextNode */
-
-/** @typedef {{ [key: string]: Array<ParsedTag | TextNode>; } & { ":@"?: Record<string, string|true>; }} ParsedTag */
-
 /**
- * @param {ParsedTag | TextNode} element
- * @returns {element is TextNode}
- */
-const isTextNode = (element) => "__text" in element;
-
-/**
- *
- * @param {string} componentString
- * @returns {Array<ParsedTag | TextNode>}
- */
-const parseElements = (componentString) => parser.parse(componentString);
-
-/** Generates a random string which can be used for scoped variable names */
-const getRandomString = () => Math.random().toString(36).slice(2);
-
-// Regex matches the last line of a JavaScript expression
-const lastLineOfExpressionRegex = /;?(.+)[;\s]?$/;
-
-/**
- * @param {unknown} expressionString
- */
-const processExpressionString = (
-  expressionString,
-  resultVariableName = `__tmph_expr__${getRandomString()}`
-) => {
-  if (typeof expressionString !== "string") {
-    throw new Error("Received invalid expression value");
-  }
-
-  const lastLineOfExpressionMatch = expressionString.match(
-    lastLineOfExpressionRegex
-  );
-
-  if (!lastLineOfExpressionMatch) {
-    throw new Error(`Failed to parse expression: "${expressionString}"`);
-  }
-
-  const lastExpressionLine = lastLineOfExpressionMatch[0];
-  const code = expressionString.slice(0, lastLineOfExpressionMatch.index);
-
-  return {
-    code: `${code}
-    let ${resultVariableName} = (${lastExpressionLine});`,
-    resultVariableName,
-  };
-};
-
-/**
- * @param {ParsedTag | TextNode} element
+ * @param {ParsedElement} element
  * @param {Record<string, string>} imports
+ * @param {import("./parseElements.js").Meta} meta
+ * @returns {Promise<string>}
  */
-const render = (element, imports) => {
-  if (isTextNode(element)) {
-    return element.__text;
+const render = async (element, imports, meta) => {
+  if (!element.tagName) {
+    return element.children?.join("\n") ?? "";
   }
-
-  /** @type {string | null} */
-  let tagName = null;
-
-  /** @type {Array<ParsedTag | TextNode> | null} */
-  let elementChildren = null;
-
-  for (const key in element) {
-    if (key !== ":@") {
-      tagName = key;
-      elementChildren = element[key];
-      break;
-    }
-  }
-
-  if (!tagName || !elementChildren) {
-    throw new Error("Failed to find tag name for element");
-  }
-
-  const allAttributes = element[":@"];
 
   /**
    * @type {Array<{ name: "#if" | "#for" | "#for-range" | "#with"; modifier: string; value: string; }> | null}
@@ -132,10 +50,14 @@ const render = (element, imports) => {
   let scopedRenderAttributes = null;
   let shouldParseChildrenAsMarkdown = false;
 
-  let attributesString = "";
+  /** @type {Record<string, string|true> | null} */
+  let staticAttributes = null;
 
-  for (let attributeName in allAttributes) {
-    const attributeValue = allAttributes[attributeName];
+  /** @type {Record<string, string|true> | null} */
+  let dynamicAttributes = null;
+
+  for (let attributeName in element.attributes) {
+    const attributeValue = element.attributes[attributeName];
 
     if (attributeName[0] === ":") {
       // :attrName is a shorthand for #attr:attrName
@@ -144,10 +66,7 @@ const render = (element, imports) => {
 
     if (attributeName[0] !== "#") {
       // Pass static attributes through to the output
-      attributesString += renderAttributeToString(
-        attributeName,
-        attributeValue
-      );
+      (staticAttributes ??= {})[attributeName] = attributeValue;
       continue;
     }
 
@@ -179,12 +98,12 @@ const render = (element, imports) => {
         const { code, resultVariableName } =
           processExpressionString(attributeValue);
 
-        tagName = `\$\{(()=>{
+        element.tagName = `\$\{(()=>{
           ${code}
           if(${resultVariableName} && typeof ${resultVariableName} === "string"){
             return ${resultVariableName};
           }
-          return "${tagName}";
+          return "${element.tagName}";
         })()\}`;
         break;
       }
@@ -199,35 +118,24 @@ const render = (element, imports) => {
 
         imports.renderAttributeToString = "#tmph/render/renderAttributes.js";
 
+        dynamicAttributes ??= {};
+
         // Attribute spreading syntax means the attribute value should be an object
         // and we should spread the object's properties into the element's attributes
         if (attributeModifier === "...") {
-          const attributesStringVariableName = `__tmph_attrString_${getRandomString()}`;
-
-          attributesString += `\$\{(()=>{
+          dynamicAttributes["..."] = `(()=>{
             ${code}
-            if(!${resultVariableName}) {
-              return "";
-            }
-            if(typeof ${resultVariableName} !== "object"){
+            if(typeof ${resultVariableName} !== "object") {
               console.warn(\`Attempted to spread non-object value \$\{${resultVariableName}\} onto element attributes\`);
-              return "";
+              return {};
             }
-
-            let ${attributesStringVariableName} = "";
-
-            for(const key in ${resultVariableName}) {
-              ${attributesStringVariableName} += renderAttributeToString(key, ${resultVariableName}[key]);
-            }
-
-            return ${attributesStringVariableName};
-          })()\}`;
+            return ${resultVariableName};
+          })()`;
         } else {
-          attributesString += `\$\{(()=>{
+          dynamicAttributes[attributeModifier] = `(()=>{
             ${code}
-
-            return renderAttributeToString("${attributeModifier}", ${resultVariableName});
-          })()\}`;
+            return ${resultVariableName};
+          })()`;
         }
 
         break;
@@ -238,17 +146,17 @@ const render = (element, imports) => {
          * attributeValue is the expression which should be evaluated to an escaped string which will
          * replace the element's children.
          */
-        imports.escapeText = "#tmph/render/escapeText.js";
         const { code, resultVariableName } =
           processExpressionString(attributeValue);
 
-        elementChildren[0] = {
-          __text: `\$\{escapeText((()=>{
-            ${code}
-            return ${resultVariableName};
-          })())\}`,
-        };
-        elementChildren.length = 1;
+        imports.escapeText = "#tmph/render/escapeText.js";
+
+        element.children = [
+          `\$\{escapeText((()=>{
+              ${code}
+              return ${resultVariableName};
+            })())\}`,
+        ];
 
         break;
       }
@@ -258,17 +166,17 @@ const render = (element, imports) => {
          * attributeValue is the expression which should be evaluated to an HTML content string which will
          * replace the element's children without being escaped.
          */
-        imports.html = "#tmph/render/html.js";
         const { code, resultVariableName } =
           processExpressionString(attributeValue);
 
-        elementChildren[0] = {
-          __text: `\$\{html((()=>{
-            ${code}
-            return ${resultVariableName};
-          })())\}`,
-        };
-        elementChildren.length = 1;
+        imports.html = "#tmph/render/html.js";
+
+        element.children = [
+          `\$\{html((()=>{
+              ${code}
+              return ${resultVariableName};
+            })())\}`,
+        ];
         break;
       }
       case "#with":
@@ -297,13 +205,22 @@ const render = (element, imports) => {
     }
   }
 
-  /** @type {string} */
-  let childrenString = "";
+  /** @type {string | null} */
+  let childrenString = null;
 
-  if (elementChildren.length > 0 || !(tagName in voidTagNames)) {
-    for (const child of elementChildren) {
-      childrenString += render(child, imports);
+  if (typeof element.children === "string") {
+    childrenString = element.children;
+  } else if (Array.isArray(element.children)) {
+    /** @type {Array<string | Promise<string>>} */
+    const childRenderPromises = new Array(element.children.length);
+    for (const child of element.children) {
+      if (typeof child === "string") {
+        childRenderPromises.push(child);
+      } else {
+        childRenderPromises.push(render(child, imports, meta));
+      }
     }
+    childrenString = (await Promise.all(childRenderPromises)).join("\n");
   }
 
   if (childrenString && shouldParseChildrenAsMarkdown) {
@@ -318,13 +235,99 @@ const render = (element, imports) => {
     }
   }
 
-  const isFragment = tagName === "_";
+  let renderedElement = "";
 
-  let renderedElement = isFragment ? "" : `<${tagName}${attributesString}>`;
-  if (childrenString !== null) {
-    renderedElement += childrenString;
+  const isImportedComponent =
+    meta.componentImports && element.tagName in meta.componentImports;
+  const isInlineComponent =
+    meta.inlineComponents && element.tagName in meta.inlineComponents;
+
+  if (isImportedComponent || isInlineComponent) {
+    let propsString = "";
+
+    if (staticAttributes) {
+      for (const attributeName in staticAttributes) {
+        propsString += `${attributeName}: ${JSON.stringify(
+          staticAttributes[attributeName]
+        )},`;
+      }
+    }
+
+    if (dynamicAttributes) {
+      /** @type {string | null} */
+      let spreadAttribute = null;
+
+      for (const attributeName in dynamicAttributes) {
+        if (attributeName === "...") {
+          spreadAttribute = /** @type {string} */ (
+            dynamicAttributes[attributeName]
+          );
+        } else {
+          propsString += `${attributeName}: ${dynamicAttributes[attributeName]},`;
+        }
+      }
+
+      if (spreadAttribute) {
+        propsString += `...${spreadAttribute},`;
+      }
+    }
+
+    // TODO: named slots
+    renderedElement = `\$\{await ${element.tagName}.render({
+      props: ${propsString ? `{${propsString}}` : "null"},
+      slot: \`${childrenString}\`
+    })\}`;
+  } else {
+    const isFragment = element.tagName === "_";
+
     if (!isFragment) {
-      renderedElement += `</${tagName}>`;
+      let attributesString = "";
+
+      for (const attributeName in staticAttributes) {
+        attributesString += await renderAttributeToString(
+          attributeName,
+          staticAttributes[attributeName]
+        );
+      }
+
+      for (const attributeName in dynamicAttributes) {
+        if (attributeName === "...") {
+          const valueName = `__tmph_value_${getRandomString()}`;
+          const keyName = `__tmph_key_${getRandomString()}`;
+          const attributePromisesName = `__tmph_attributePromises_${getRandomString()}`;
+          const resultName = `__tmph_result_${getRandomString()}`;
+          attributesString += `\$\{await (async ()=> {
+            const ${valueName} = ${dynamicAttributes[attributeName]};
+            let ${attributePromisesName} = [];
+            for(const ${keyName} in ${valueName}){
+              ${attributePromisesName}.push(renderAttributeToString(${keyName}, ${valueName}[${keyName}]));
+            }
+            const ${resultName} =  (await Promise.all(${attributePromisesName})).join(" ");
+            return ${resultName} ? \` \$\{${resultName}\}\` : "";
+          })()\}`;
+        } else {
+          attributesString += `\$\{await renderAttributeToString(
+            "${attributeName}",
+            ${dynamicAttributes[attributeName]},
+          )\}`;
+        }
+      }
+
+      renderedElement = `<${element.tagName}${attributesString}>`;
+    }
+
+    if (childrenString !== null) {
+      renderedElement += childrenString;
+
+      if (!isFragment) {
+        if (element.tagName in voidTagNames) {
+          console.warn(
+            `Void tag <${element.tagName}> unexpectedly received child content`
+          );
+        }
+
+        renderedElement += `</${element.tagName}>`;
+      }
     }
   }
 
@@ -338,7 +341,7 @@ const render = (element, imports) => {
             continue;
           }
 
-          renderedElement = `\$\{(()=>{
+          renderedElement = `\$\{await (async ()=>{
             ${processExpressionString(attribute.value, attribute.modifier).code}
             return \`${renderedElement}\`;
           })()\}`;
@@ -349,7 +352,7 @@ const render = (element, imports) => {
             attribute.value
           );
 
-          renderedElement = `\$\{(()=>{
+          renderedElement = `\$\{await (async ()=>{
             ${code}
             return ${resultVariableName} ? \`${renderedElement}\` : "";
           })()\}`;
@@ -367,7 +370,7 @@ const render = (element, imports) => {
 
           const renderStringVariableName = `__tmph_render_${getRandomString()}`;
 
-          renderedElement = `\$\{(()=> {
+          renderedElement = `\$\{await (async ()=> {
                 ${code}
                 let ${renderStringVariableName} = "";
                 let ${indexName} = 0;
@@ -413,38 +416,66 @@ const cache = {};
 /**
  * @param {string} componentPath
  */
-export function compileComponent(componentPath) {
+export async function compileComponent(componentPath) {
   if (cache[componentPath]) {
     return cache[componentPath];
   }
 
   const componentString = readFileSync(componentPath, "utf8");
 
-  const elements = parseElements(componentString);
-
-  let renderString = "";
+  const { parsedElements, meta } = parseElements(componentString);
 
   /** @type {Record<string, string>} */
   const imports = {};
 
-  for (const element of elements) {
-    renderString += render(element, imports);
+  const componentDirectory = path.dirname(componentPath);
+
+  if (meta.componentImports) {
+    const resolveComponentImportPromises = [];
+
+    for (const componentName in meta.componentImports) {
+      const filePath = path.resolve(
+        componentDirectory,
+        meta.componentImports[componentName]
+      );
+
+      resolveComponentImportPromises.push(
+        compileComponent(filePath).then((outputPath) => {
+          imports[`* as ${componentName}`] = outputPath;
+        })
+      );
+    }
+
+    await Promise.all(resolveComponentImportPromises);
   }
 
+  const renderPromises = [];
+
+  for (const element of parsedElements) {
+    renderPromises.push(render(element, imports, meta));
+  }
+
+  const renderString = (await Promise.all(renderPromises)).join("\n");
+
+  const outputPath = path.resolve(
+    componentDirectory,
+    `./${path.basename(componentPath, ".html")}.js`
+  );
+
   writeFileSync(
-    `index.js`,
+    outputPath,
     esbuild.transformSync(
       `
     ${(() => {
       let importsString = "";
 
       for (const importMethod in imports) {
-        importsString += `import {${importMethod}} from "${imports[importMethod]}";`;
+        importsString += `import ${importMethod} from "${imports[importMethod]}";`;
       }
 
       return importsString;
     })()}
-    export function render(params) {
+    export async function render({ props, slot, namedSlots }) {
       return \`${renderString}\`;
     }`,
       {
@@ -452,4 +483,6 @@ export function compileComponent(componentPath) {
       }
     ).code
   );
+
+  return outputPath;
 }

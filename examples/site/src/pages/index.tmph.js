@@ -1,51 +1,13 @@
-import { renderAttributes, defaultProps, html } from "tempeh/render";
+import*as i from"/Users/ryangeyer/Projects/tempeh/examples/site/src/components/UnderlinedLink.tmph.js";import*as m from"/Users/ryangeyer/Projects/tempeh/examples/site/src/Layout.tmph.js";import _ from"#tmph/render/renderAttributes.js";export async function render({props:e,slot:l,namedSlots:a}){return`<link rel="import" href="..&#x2F;Layout.tmph.html">
+<link rel="import" href="..&#x2F;components&#x2F;UnderlinedLink.tmph.html">
+${await m.render({props:{title:"Welcome to my home page"},slot:`
 
-const imports = await Promise.all([
-  import("./Layout.tmph.js"),
-  import("./UnderlinedLink.tmph.js"),
-]);
 
-/**
- * @typedef  {Object} Props
- * @property {boolean} [showForm=false]
- * @property {Record<string, string>} [formProps]
- */
+<h1>
+Hello, world!</h1>
+${await i.render({props:{href:"/about"},slot:`
 
-/**
- * @param {Object} params
- */
-export async function render({ props }) {
-  const [Layout, UnderlinedLink] = imports;
-
-  defaultProps(props, {
-    showForm: false,
-    formProps: {
-      method: "POST",
-    },
-  });
-
-  return Layout.render({
-    props: {
-      title: "Welcome to my home page",
-    },
-    slot: html`
-      <h1>Hello, world!</h1>
-      ${UnderlinedLink.render({
-        props: {
-          href: "/about",
-        },
-        slot: "About",
-        namedSlots: {
-          icon: "<svg></svg>",
-        },
-      })}
-      ${props.showForm
-        ? html`
-            <div>
-              <form ${renderAttributes(props.formProps)}></form>
-            </div>
-          `
-        : ""}
-    `,
-  });
-}
+About
+<svg slot="icon">`})}
+${await(async()=>e.showForm?`<div>
+<form${await(async()=>{const r=(()=>{let t=e.formProps;return typeof t!="object"?(console.warn(`Attempted to spread non-object value ${t} onto element attributes`),{}):t})();let o=[];for(const t in r)o.push(_(t,r[t]));const n=(await Promise.all(o)).join(" ");return n?` ${n}`:""})()}></div>`:"")()}`})}`}

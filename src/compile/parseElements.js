@@ -1,153 +1,159 @@
-import {
-  isAttrValueQuoteChar,
-  isEndOfTagContentChar,
-  isNonWhiteSpaceChar,
-  isTagEndChar,
-  isTagStartChar,
-  isWhiteSpaceChar,
-} from "./charUtils.js";
-import { parseAttributes } from "./parseAttributes.js";
-import { makeCursor } from "./stringReaderCursor.js";
+import { XMLParser } from "fast-xml-parser";
+import { extractComponentName } from "./extractComponentName.js";
 
-/** @typedef {import("./parseAttributes").ElementAttributes} ElementAttributes */
-/** @typedef {import("./parseAttributes").RenderAttributes} RenderAttributes */
+const parser = new XMLParser({
+  // Process tag attributes
+  ignoreAttributes: false,
+  // Value-less attributes should be treated as booleans
+  allowBooleanAttributes: true,
+  // Text content should always be set as an `__text` property on an object even if there are no other children or attributes
+  alwaysCreateTextNode: true,
+  textNodeName: "__text",
+  // Parsed elements should be returned as an array of objects to preserve order
+  preserveOrder: true,
+  // preserveOrder means all attributes will be grouped under a `:@` property, so we don't need
+  // any additional prefixes on top of that
+  attributeNamePrefix: "",
+  // Skip DOCTYPE entities and XML declarations
+  processEntities: false,
+  ignoreDeclaration: true,
+  // Don't remove namespace prefixes from tag names or attributes
+  removeNSPrefix: false,
+});
 
-/** @typedef {TmphElement | string} TmphNode */
+/** @typedef {{ tagName: string | null; attributes: Record<string, string|true> | null; children: Array<ParsedElement|string> | null; }} ParsedElement */
 
 /**
- * @typedef {Object} TmphElement
- * @property {string} tagName
- * @property {import("./parseAttributes").ElementAttributes} attributes - Normal attributes which will be included in the final HTML.
- * @property {import("./parseAttributes").RenderAttributes} renderAttributes - Special tagged attributes which inform how the element should be rendered, but will be stripped from the final HTML.
- * @property {Array<TmphNode>} children
- * @property {TmphElement | null} parent
+ * @typedef {{
+ *  [tagName: string]: UnformattedParsedElement[];
+ * } & {
+ *   ":@"?: Record<string, string|true>;
+ *   __text?: string;
+ * }} UnformattedParsedElement
+ */
+
+/** @param {string} key */
+const findTagNameKey = (key) => key !== ":@";
+
+/**
+ * @typedef {{
+ *  stylesheets?: string[];
+ *  scripts?: string[];
+ *  componentImports?: { [componentName: string]: string; };
+ *  inlineComponents?: { [componentName: string]: Array<ParsedElement | string>; };
+ * }} Meta
  */
 
 /**
- * @param {string} char
+ * @param {UnformattedParsedElement} unformattedParsedElement
+ * @param {Meta} meta
+ *
+ * @returns {ParsedElement | null}
  */
-const isEndOfTagName = (char) =>
-  isWhiteSpaceChar(char) || isEndOfTagContentChar(char);
+function formatParsedElement(unformattedParsedElement, meta) {
+  /** @type {ParsedElement} */
+  const formattedElement = {
+    tagName: null,
+    attributes: null,
+    children: null,
+  };
+
+  if ("__text" in unformattedParsedElement) {
+    formattedElement.children = [unformattedParsedElement.__text || ""];
+    return formattedElement;
+  }
+
+  if (":@" in unformattedParsedElement) {
+    formattedElement.attributes = unformattedParsedElement[":@"] || null;
+  }
+
+  const tagName = Object.keys(unformattedParsedElement).find(findTagNameKey);
+
+  if (tagName) {
+    formattedElement.tagName = tagName;
+
+    for (const child of unformattedParsedElement[tagName]) {
+      const formattedChildElement = formatParsedElement(child, meta);
+      if (formattedChildElement) {
+        (formattedElement.children ??= []).push(formattedChildElement);
+      }
+    }
+  }
+
+  if (tagName === "link") {
+    if (!formattedElement.attributes) {
+      throw new Error("Received invalid <link> element without attributes");
+    }
+
+    const rel = formattedElement.attributes.rel;
+
+    if (typeof rel !== "string") {
+      throw new Error(`Received invalid rel "${rel}" for <link> element`);
+    }
+
+    const importPath = formattedElement.attributes.href;
+
+    if (typeof importPath !== "string") {
+      throw new Error(
+        `Received invalid href "${importPath}" for <link rel="${rel}"> element`
+      );
+    }
+
+    switch (rel) {
+      case "stylesheet":
+        (meta.stylesheets ??= []).push(importPath);
+        return null;
+      case "import":
+        let componentName = formattedElement.attributes.as;
+
+        if (!componentName || typeof componentName !== "string") {
+          componentName = extractComponentName(importPath);
+        }
+
+        // Ensure the component name is capitalized
+        componentName = componentName[0].toUpperCase() + componentName.slice(1);
+
+        (meta.componentImports ??= {})[componentName] = importPath;
+    }
+  } else if (
+    tagName === "template" &&
+    typeof formattedElement.attributes?.["#component"] === "string"
+  ) {
+    const componentName = formattedElement.attributes["#component"];
+
+    if (!formattedElement.children) {
+      throw new Error(
+        `Received invalid <template #component="${componentName}"> element without children`
+      );
+    }
+
+    (meta.inlineComponents ??= {})[componentName] = formattedElement.children;
+  }
+
+  return formattedElement;
+}
 
 /**
  *
  * @param {string} componentString
  */
-export function parseElements(componentString) {
-  /** @type {Array<TmphNode>} */
-  const elements = [];
+export const parseElements = (componentString) => {
+  /** @type {UnformattedParsedElement[]} */
+  const unformattedParsedElements = parser.parse(componentString);
 
-  /** @type {TmphElement | null} */
-  let currentParentElement = null;
+  /** @type {ParsedElement[]} */
+  const parsedElements = [];
 
-  /**
-   * @param {TmphNode} element
-   */
-  const addElement = (element) => {
-    if (!element) {
-      return;
-    }
+  /** @type {Meta} */
+  const meta = {};
 
-    if (currentParentElement) {
-      currentParentElement.children.push(element);
-    } else {
-      elements.push(element);
-    }
-  };
+  for (const element of unformattedParsedElements) {
+    const formattedElement = formatParsedElement(element, meta);
 
-  const cursor = makeCursor(componentString);
-
-  while (!cursor.isAtEnd()) {
-    // Skip whitespace until we hit some content
-    let char = cursor.advanceUntil(isNonWhiteSpaceChar);
-
-    if (char === "<") {
-      if (cursor.peekNext() === "/") {
-        // This is a closing tag. Let's move ahead to the start of the tag name.
-        if (
-          !cursor.advanceUntil(
-            (char) => char !== "<" && char !== "/" && !isWhiteSpaceChar(char)
-          )
-        ) {
-          throw new Error(
-            "Something went wrong while parsing closing tag name from component string"
-          );
-        }
-
-        const tagName = cursor.advanceUntil(isEndOfTagName, true);
-
-        if (!currentParentElement) {
-          throw new Error(
-            `Closing tag "${tagName}" found without matching opening tag`
-          );
-        }
-
-        /** @type {TmphElement} */
-        let closingElement = currentParentElement;
-
-        if (currentParentElement.tagName === tagName) {
-          currentParentElement = closingElement.parent;
-        } else {
-          while (
-            currentParentElement &&
-            currentParentElement.tagName !== tagName
-          ) {
-            closingElement = currentParentElement;
-            currentParentElement = closingElement.parent;
-          }
-        }
-
-        cursor.advanceUntil((char, nextChar, prevChar) => prevChar === ">");
-        continue;
-      }
-
-      /** @type {string | null} */
-      let tagName = null;
-
-      // Skip the "<" char
-      cursor.advanceCursor();
-      // Advance until we hit a non-whitespace character; this is the start of the tag name
-      cursor.advanceUntil(isNonWhiteSpaceChar);
-      // Collect all chars until we hit a whitespace character; this is the end of the tag name
-      tagName = cursor.advanceUntil(isEndOfTagName, true);
-      if (!tagName) {
-        throw new Error(
-          "Something went wrong while parsing tag name from component string"
-        );
-      }
-
-      // Collect all chars between the tag name and the end of the tag; these are the attributes.
-      // We'll need to do some extra work to parse them in to an object.
-      const attributeString = cursor.advanceUntil(isTagEndChar, true);
-
-      const { attributes, renderAttributes } = parseAttributes(
-        attributeString || ""
-      );
-
-      const isSelfClosing = cursor.peekPrev() === "/";
-
-      /** @type {TmphElement} */
-      const element = {
-        tagName,
-        attributes,
-        renderAttributes,
-        children: [],
-        parent: currentParentElement,
-      };
-
-      addElement(element);
-
-      if (!isSelfClosing) {
-        currentParentElement = element;
-      }
-
-      // Advance the cursor outside of the tag
-      cursor.advanceUntil((char, nextChar, prevChar) => prevChar === ">");
-    } else {
-      const textContent = cursor.advanceUntil(isTagStartChar, true);
-      addElement(textContent);
+    if (formattedElement) {
+      parsedElements.push(formattedElement);
     }
   }
 
-  return elements;
-}
+  return { parsedElements, meta };
+};

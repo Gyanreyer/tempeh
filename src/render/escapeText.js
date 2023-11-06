@@ -29,7 +29,7 @@ const replaceEscapedChar = (matchChar) =>
  *
  * @param {unknown} text
  */
-export function escapeText(text) {
+export default function escapeText(text) {
   if (typeof text !== "string") {
     return "";
   }

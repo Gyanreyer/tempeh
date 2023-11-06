@@ -13,7 +13,7 @@ const minifyHTMLOptions = {
  *
  * @param {unknown} htmlString
  */
-export function html(htmlString) {
+export default function html(htmlString) {
   if (typeof htmlString !== "string") {
     return "";
   }

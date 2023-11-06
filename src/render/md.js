@@ -1,5 +1,5 @@
 import { parse } from "marked";
-import { html } from "./html.js";
+import html from "./html.js";
 
 /**
  * Takes a markdown string and converts it into a minified HTML string.
@@ -7,7 +7,7 @@ import { html } from "./html.js";
  * @param {string} markdownString
  * @returns {string}
  */
-export function md(markdownString) {
+export default function md(markdownString) {
   return html(
     parse(markdownString, {
       async: false,

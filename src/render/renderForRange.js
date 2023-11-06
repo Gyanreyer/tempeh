@@ -8,7 +8,7 @@
  * @param {(index: number) => string} render
  * @returns {string}
  */
-export function renderForRange(range, render) {
+export default function renderForRange(range, render) {
   if (!Array.isArray(range)) {
     throw new Error(`Received invalid range array: ${JSON.stringify(range)}`);
   }
