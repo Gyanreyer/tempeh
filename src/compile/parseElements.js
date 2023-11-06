@@ -114,6 +114,7 @@ function formatParsedElement(unformattedParsedElement, meta) {
         componentName = componentName[0].toUpperCase() + componentName.slice(1);
 
         (meta.componentImports ??= {})[componentName] = importPath;
+        return null;
     }
   } else if (
     tagName === "template" &&
@@ -128,6 +129,7 @@ function formatParsedElement(unformattedParsedElement, meta) {
     }
 
     (meta.inlineComponents ??= {})[componentName] = formattedElement.children;
+    return null;
   }
 
   return formattedElement;

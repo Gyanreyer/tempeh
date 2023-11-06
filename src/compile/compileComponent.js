@@ -205,36 +205,6 @@ const render = async (element, imports, meta) => {
     }
   }
 
-  /** @type {string | null} */
-  let childrenString = null;
-
-  if (typeof element.children === "string") {
-    childrenString = element.children;
-  } else if (Array.isArray(element.children)) {
-    /** @type {Array<string | Promise<string>>} */
-    const childRenderPromises = new Array(element.children.length);
-    for (const child of element.children) {
-      if (typeof child === "string") {
-        childRenderPromises.push(child);
-      } else {
-        childRenderPromises.push(render(child, imports, meta));
-      }
-    }
-    childrenString = (await Promise.all(childRenderPromises)).join("\n");
-  }
-
-  if (childrenString && shouldParseChildrenAsMarkdown) {
-    // Presence of #md attribute means we should parse the children as markdown
-    const hasDynamicContent = childrenString.includes("${");
-    if (!hasDynamicContent) {
-      childrenString = md(childrenString);
-    } else {
-      imports.md = "#tmph/render/md.js";
-
-      childrenString = `\$\{md(\`${childrenString}\`)\}`;
-    }
-  }
-
   let renderedElement = "";
 
   const isImportedComponent =
@@ -272,10 +242,52 @@ const render = async (element, imports, meta) => {
       }
     }
 
-    // TODO: named slots
+    /** @type {Array<string|Promise<string>> | null} */
+    let defaultSlotContent = null;
+    /** @type {Record<string, Promise<string>[]> | null} */
+    let namedSlots = null;
+
+    if (element.children) {
+      for (const child of element.children) {
+        if (typeof child === "string") {
+          (defaultSlotContent ??= []).push(child);
+        } else {
+          if (typeof child.attributes?.slot === "string") {
+            const slotName = child.attributes.slot;
+            // Delete the slot attribute so it doesn't get rendered
+            delete child.attributes.slot;
+            ((namedSlots ??= {})[slotName] ??= []).push(
+              render(child, imports, meta)
+            );
+          } else {
+            (defaultSlotContent ??= []).push(render(child, imports, meta));
+          }
+        }
+      }
+    }
+
+    let defaultSlotString = defaultSlotContent
+      ? (await Promise.all(defaultSlotContent)).join("\n")
+      : null;
+
+    /** @type {string} */
+    let stringifiedNamedSlots;
+    if (namedSlots) {
+      stringifiedNamedSlots = "{";
+      for (const slotName in namedSlots) {
+        stringifiedNamedSlots += `${slotName}: \`${(
+          await Promise.all(namedSlots[slotName])
+        ).join("\n")}\`,`;
+      }
+      stringifiedNamedSlots += "}";
+    } else {
+      stringifiedNamedSlots = "null";
+    }
+
     renderedElement = `\$\{await ${element.tagName}.render({
       props: ${propsString ? `{${propsString}}` : "null"},
-      slot: \`${childrenString}\`
+      slot: ${defaultSlotString ? `\`${defaultSlotString}\`` : "null"},
+      namedSlots: ${stringifiedNamedSlots},
     })\}`;
   } else {
     const isFragment = element.tagName === "_";
@@ -316,18 +328,56 @@ const render = async (element, imports, meta) => {
       renderedElement = `<${element.tagName}${attributesString}>`;
     }
 
-    if (childrenString !== null) {
-      renderedElement += childrenString;
+    /** @type {string} */
+    let childrenString = "";
 
-      if (!isFragment) {
-        if (element.tagName in voidTagNames) {
-          console.warn(
-            `Void tag <${element.tagName}> unexpectedly received child content`
-          );
+    if (typeof element.children === "string") {
+      childrenString = element.children;
+    } else if (Array.isArray(element.children)) {
+      /** @type {Array<string | Promise<string>>} */
+      const childRenderPromises = new Array(element.children.length);
+      for (const child of element.children) {
+        if (typeof child === "string") {
+          childRenderPromises.push(child);
+        } else {
+          if (child.tagName === "slot") {
+            if (child.attributes?.name) {
+              const slotName = child.attributes.name;
+              // Delete the slot attribute so it doesn't get rendered
+              childRenderPromises.push(`\$\{namedSlots?.${slotName} ?? ""\}`);
+            } else {
+              childRenderPromises.push(`\$\{slot ?? ""\}`);
+            }
+          } else {
+            childRenderPromises.push(render(child, imports, meta));
+          }
         }
-
-        renderedElement += `</${element.tagName}>`;
       }
+      childrenString = (await Promise.all(childRenderPromises)).join("\n");
+    }
+
+    if (childrenString && shouldParseChildrenAsMarkdown) {
+      // Presence of #md attribute means we should parse the children as markdown
+      const hasDynamicContent = childrenString.includes("${");
+      if (!hasDynamicContent) {
+        childrenString = md(childrenString);
+      } else {
+        imports.md = "#tmph/render/md.js";
+
+        childrenString = `\$\{md(\`${childrenString}\`)\}`;
+      }
+    }
+
+    renderedElement += childrenString;
+
+    if (!isFragment) {
+      if (element.tagName in voidTagNames) {
+        console.warn(
+          `Void tag <${element.tagName}> unexpectedly received child content`
+        );
+      }
+
+      renderedElement += `</${element.tagName}>`;
     }
   }
 

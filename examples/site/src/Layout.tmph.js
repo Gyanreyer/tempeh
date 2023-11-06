@@ -1,11 +1,11 @@
-import e from"#tmph/render/escapeText.js";export async function render({props:t,slot:n,namedSlots:a}){return`<html lang="en-US">
+import a from"#tmph/render/escapeText.js";export async function render({props:t,slot:e,namedSlots:n}){return`<html lang="en-US">
 
 <head>
 
 
-<meta charset="UTF-8">
-<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<meta charset="UTF-8"></meta>
+<meta name="viewport" content="width=device-width, initial-scale=1.0"></meta>
 <title>
-${e((()=>t.title)())}</title></head>
+${a((()=>t.title)())}</title></head>
 <body>
-<slot></body></html>`}
+${e??""}</body></html>`}
