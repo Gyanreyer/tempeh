@@ -10,8 +10,11 @@ export function extractComponentName(componentPath) {
 
   const firstDotIndex = componentFileName.indexOf(".");
 
-  return componentFileName.slice(
+  const componentName = componentFileName.slice(
     0,
     firstDotIndex >= 0 ? firstDotIndex : undefined
   );
+
+  // Ensure the first letter is capitalized
+  return componentName[0].toUpperCase() + componentName.slice(1);
 }

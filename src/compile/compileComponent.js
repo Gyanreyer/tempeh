@@ -3,14 +3,15 @@ import path from "node:path";
 
 import esbuild from "esbuild";
 
-import { parseElements } from "./parseElements.js";
-
 import renderAttributeToString from "../render/renderAttributes.js";
 import md from "../render/md.js";
 import { processExpressionString } from "./parseExpressionString.js";
 import { getRandomString } from "../utils/getRandomString.js";
+import { parseXML } from "./parseXML.js";
+import { gatherComponentMeta } from "./gatherComponentMeta.js";
 
-/** @typedef {import("./parseElements.js").ParsedElement} ParsedElement */
+/** @typedef {import("./parseXML.js").TmphNode} TmphNode */
+/** @typedef {import("./gatherComponentMeta.js").Meta} Meta */
 
 // HTML tag names that don't have closing tags
 const voidTagNames = {
@@ -31,14 +32,18 @@ const voidTagNames = {
 };
 
 /**
- * @param {ParsedElement} element
+ * @param {TmphNode|string} node
  * @param {Record<string, string>} imports
- * @param {import("./parseElements.js").Meta} meta
+ * @param {Meta} meta
  * @returns {Promise<string>}
  */
-const render = async (element, imports, meta) => {
-  if (!element.tagName) {
-    return element.children?.join("\n") ?? "";
+const render = async (node, imports, meta) => {
+  if (typeof node === "string") {
+    return node;
+  }
+
+  if (!node.tagName) {
+    return node.children?.join("\n") ?? "";
   }
 
   /**
@@ -56,8 +61,8 @@ const render = async (element, imports, meta) => {
   /** @type {Record<string, string|true> | null} */
   let dynamicAttributes = null;
 
-  for (let attributeName in element.attributes) {
-    const attributeValue = element.attributes[attributeName];
+  for (let attributeName in node.attributes) {
+    const attributeValue = node.attributes[attributeName];
 
     if (attributeName[0] === ":") {
       // :attrName is a shorthand for #attr:attrName
@@ -98,12 +103,12 @@ const render = async (element, imports, meta) => {
         const { code, resultVariableName } =
           processExpressionString(attributeValue);
 
-        element.tagName = `\$\{(()=>{
+        node.tagName = `\$\{(()=>{
           ${code}
           if(${resultVariableName} && typeof ${resultVariableName} === "string"){
             return ${resultVariableName};
           }
-          return "${element.tagName}";
+          return "${node.tagName}";
         })()\}`;
         break;
       }
@@ -151,7 +156,7 @@ const render = async (element, imports, meta) => {
 
         imports.escapeText = "#tmph/render/escapeText.js";
 
-        element.children = [
+        node.children = [
           `\$\{escapeText((()=>{
               ${code}
               return ${resultVariableName};
@@ -171,7 +176,7 @@ const render = async (element, imports, meta) => {
 
         imports.html = "#tmph/render/html.js";
 
-        element.children = [
+        node.children = [
           `\$\{html((()=>{
               ${code}
               return ${resultVariableName};
@@ -208,9 +213,9 @@ const render = async (element, imports, meta) => {
   let renderedElement = "";
 
   const isImportedComponent =
-    meta.componentImports && element.tagName in meta.componentImports;
+    meta.componentImports && node.tagName in meta.componentImports;
   const isInlineComponent =
-    meta.inlineComponents && element.tagName in meta.inlineComponents;
+    meta.inlineComponents && node.tagName in meta.inlineComponents;
 
   if (isImportedComponent || isInlineComponent) {
     let propsString = "";
@@ -247,8 +252,8 @@ const render = async (element, imports, meta) => {
     /** @type {Record<string, Promise<string>[]> | null} */
     let namedSlots = null;
 
-    if (element.children) {
-      for (const child of element.children) {
+    if (node.children) {
+      for (const child of node.children) {
         if (typeof child === "string") {
           (defaultSlotContent ??= []).push(child);
         } else {
@@ -284,13 +289,13 @@ const render = async (element, imports, meta) => {
       stringifiedNamedSlots = "null";
     }
 
-    renderedElement = `\$\{await ${element.tagName}.render({
+    renderedElement = `\$\{await ${node.tagName}.render({
       props: ${propsString ? `{${propsString}}` : "null"},
       slot: ${defaultSlotString ? `\`${defaultSlotString}\`` : "null"},
       namedSlots: ${stringifiedNamedSlots},
     })\}`;
   } else {
-    const isFragment = element.tagName === "_";
+    const isFragment = node.tagName === "_";
 
     if (!isFragment) {
       let attributesString = "";
@@ -325,18 +330,16 @@ const render = async (element, imports, meta) => {
         }
       }
 
-      renderedElement = `<${element.tagName}${attributesString}>`;
+      renderedElement = `<${node.tagName}${attributesString}>`;
     }
 
     /** @type {string} */
     let childrenString = "";
 
-    if (typeof element.children === "string") {
-      childrenString = element.children;
-    } else if (Array.isArray(element.children)) {
+    if (node.children) {
       /** @type {Array<string | Promise<string>>} */
-      const childRenderPromises = new Array(element.children.length);
-      for (const child of element.children) {
+      const childRenderPromises = new Array(node.children.length);
+      for (const child of node.children) {
         if (typeof child === "string") {
           childRenderPromises.push(child);
         } else {
@@ -371,15 +374,15 @@ const render = async (element, imports, meta) => {
     renderedElement += childrenString;
 
     if (!isFragment) {
-      const isVoid = element.tagName in voidTagNames;
+      const isVoid = node.tagName in voidTagNames;
 
       if (!isVoid || Boolean(childrenString)) {
         if (isVoid) {
           console.warn(
-            `Void tag <${element.tagName}> unexpectedly received child content`
+            `Void tag <${node.tagName}> unexpectedly received child content`
           );
         }
-        renderedElement += `</${element.tagName}>`;
+        renderedElement += `</${node.tagName}>`;
       }
     }
   }
@@ -476,7 +479,8 @@ export async function compileComponent(componentPath) {
 
   const componentString = readFileSync(componentPath, "utf8");
 
-  const { parsedElements, meta } = parseElements(componentString);
+  const parsedRoot = parseXML(componentString);
+  const meta = gatherComponentMeta(parsedRoot);
 
   /** @type {Record<string, string>} */
   const imports = {};
@@ -504,8 +508,8 @@ export async function compileComponent(componentPath) {
 
   const renderPromises = [];
 
-  for (const element of parsedElements) {
-    renderPromises.push(render(element, imports, meta));
+  for (const node of parsedRoot.children) {
+    renderPromises.push(render(node, imports, meta));
   }
 
   const renderString = (await Promise.all(renderPromises)).join("\n");
@@ -550,6 +554,7 @@ export async function compileComponent(componentPath) {
       `
     ${importsString}
     ${inlineComponentsString}
+    ${meta.jsDoc ?? ""}
     export async function render({ props, slot, namedSlots }) {
       return \`${renderString}\`;
     }`,
