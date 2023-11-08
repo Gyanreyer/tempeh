@@ -1,4 +1,6 @@
-import n from"#tmph/render/escapeText.js";export async function render({props:e,slot:t,namedSlots:m}){return`<html lang="en-US">
+import a from"#tmph/render/escapeText.js";export async function render({props:t,slot:e,namedSlots:n}){return`
+<!DOCTYPE html>
+<html lang="en-US">
 
 <head>
 
@@ -6,6 +8,6 @@ import n from"#tmph/render/escapeText.js";export async function render({props:e,
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>
-${n((()=>e.title)())}</title></head>
+${a((()=>t.title)())}</title></head>
 <body>
-${t??""}</body></html>`}
+${e??""}</body></html>`}

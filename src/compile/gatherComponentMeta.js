@@ -1,4 +1,5 @@
 import { extractComponentName } from "./extractComponentName.js";
+import { getNodeAttributeValue } from "./getNodeAttributeValue.js";
 
 /** @typedef {import("./parseXML.js").TmphNode} TmphNode */
 
@@ -14,75 +15,73 @@ import { extractComponentName } from "./extractComponentName.js";
 
 /**
  *
- * @param {TmphNode|string} node
- * @param {Meta} [meta]
+ * @param {Array<TmphNode|string>} nodeList
+ * @param {Meta} meta
  */
-export function gatherComponentMeta(node, meta = {}) {
-  if (typeof node === "string") {
-    return meta;
-  }
-
-  if (!node.children) {
-    return meta;
-  }
-
+export function gatherComponentMeta(nodeList, meta) {
   let i = 0;
-  let childCount = node.children.length;
+  let childCount = nodeList.length;
 
   /**
    * Remove the current child so it isn't rendered.
    */
   const removeCurrentChild = () => {
-    node.children?.splice(i, 1);
+    nodeList.splice(i, 1);
     --i;
     --childCount;
   };
 
   for (; i < childCount; ++i) {
-    const child = /** @type {string | TmphNode} */ (node.children[i]);
+    const child = /** @type {string | TmphNode} */ (nodeList[i]);
+
+    console.log("child", child);
 
     if (typeof child === "string") {
       continue;
     }
 
-    const { tagName, attributes, children } = child;
+    const { TagName: tagName, Children: children } = child;
 
     if (tagName === "link") {
-      if (!attributes) {
+      if (!child.Attributes) {
         throw new Error("Received invalid <link> element without attributes");
       }
 
-      if (!attributes.rel || typeof attributes.rel !== "string") {
+      const rel = getNodeAttributeValue(child, "rel");
+
+      if (!rel || typeof rel !== "string") {
         throw new Error(
           `Received <link> element without a valid rel attribute`
         );
       }
 
-      if (!attributes.href || typeof attributes.href !== "string") {
+      const href = getNodeAttributeValue(child, "href");
+
+      if (!href || typeof href !== "string") {
         throw new Error(
           `Received <link> element without a valid href attribute`
         );
       }
 
-      if (attributes.rel === "stylesheet") {
-        (meta.stylesheets ??= []).push(attributes.href);
+      if (rel === "stylesheet") {
+        (meta.stylesheets ??= []).push(href);
         // Remove the link element so it isn't rendered
         removeCurrentChild();
         continue;
-      } else if (attributes.rel === "import") {
-        let componentName = attributes.as;
+      } else if (rel === "import") {
+        let componentName = getNodeAttributeValue(child, "as");
 
         if (!componentName || typeof componentName !== "string") {
-          componentName = extractComponentName(attributes.href);
+          componentName = extractComponentName(href);
         }
 
-        (meta.componentImports ??= {})[componentName] = attributes.href;
+        (meta.componentImports ??= {})[componentName] = href;
         // Remove the link element so it isn't rendered
         removeCurrentChild();
         continue;
       }
     } else if (tagName === "script") {
-      if (attributes?.["#types"]) {
+      if (getNodeAttributeValue(child, "#types")) {
         meta.jsDoc = "";
         if (children) {
           for (const grandChild of children) {
@@ -95,28 +94,29 @@ export function gatherComponentMeta(node, meta = {}) {
         continue;
       }
     } else if (tagName === "template") {
-      if (attributes?.["#component"]) {
-        const componentName = attributes["#component"];
-
-        if (!componentName || typeof componentName !== "string") {
+      const inlineComponentName = getNodeAttributeValue(child, "#component");
+      if (inlineComponentName) {
+        if (!inlineComponentName || typeof inlineComponentName !== "string") {
           throw new Error(
-            `Received invalid template #component name "${componentName}"`
+            `Received invalid template #component name "${inlineComponentName}"`
           );
         }
 
         if (!children) {
           throw new Error(
-            `Received invalid template #component "${componentName}" without children`
+            `Received invalid template #component "${inlineComponentName}" without children`
           );
         }
 
-        (meta.inlineComponents ??= {})[componentName] = children;
+        (meta.inlineComponents ??= {})[inlineComponentName] = children;
         removeCurrentChild();
         continue;
       }
     }
 
-    gatherComponentMeta(child, meta);
+    if (child.Children) {
+      gatherComponentMeta(child.Children, meta);
+    }
   }
 
   return meta;

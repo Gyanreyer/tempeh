@@ -1,4 +1,4 @@
-import { readFileSync, writeFileSync } from "node:fs";
+import { writeFileSync } from "node:fs";
 import path from "node:path";
 
 import esbuild from "esbuild";
@@ -9,6 +9,7 @@ import { processExpressionString } from "./parseExpressionString.js";
 import { getRandomString } from "../utils/getRandomString.js";
 import { parseXML } from "./parseXML.js";
 import { gatherComponentMeta } from "./gatherComponentMeta.js";
+import { getNodeAttributeValue } from "./getNodeAttributeValue.js";
 
 /** @typedef {import("./parseXML.js").TmphNode} TmphNode */
 /** @typedef {import("./gatherComponentMeta.js").Meta} Meta */
@@ -42,8 +43,8 @@ const render = async (node, imports, meta) => {
     return node;
   }
 
-  if (!node.tagName) {
-    return node.children?.join("\n") ?? "";
+  if (!node.TagName) {
+    return node.Children?.join("\n") ?? "";
   }
 
   /**
@@ -61,74 +62,73 @@ const render = async (node, imports, meta) => {
   /** @type {Record<string, string|true> | null} */
   let dynamicAttributes = null;
 
-  for (let attributeName in node.attributes) {
-    const attributeValue = node.attributes[attributeName];
-
-    if (attributeName[0] === ":") {
-      // :attrName is a shorthand for #attr:attrName
-      attributeName = `#attr${attributeName}`;
-    }
-
-    if (attributeName[0] !== "#") {
-      // Pass static attributes through to the output
-      (staticAttributes ??= {})[attributeName] = attributeValue;
-      continue;
-    }
-
-    if (attributeName === "#") {
-      // Skip comment attributes
-      continue;
-    }
-
-    const [baseAttributeName, attributeModifier] = attributeName.split(":");
-
-    switch (baseAttributeName) {
-      case "#md": {
-        /**
-         * #md
-         * attributeValue is ignored
-         * If the element has children, they will be parsed as markdown
-         */
-        shouldParseChildrenAsMarkdown = true;
-        break;
+  if (node.Attributes) {
+    for (let [attributeName, attributeValue] of node.Attributes) {
+      if (attributeName[0] === ":") {
+        // :attrName is a shorthand for #attr:attrName
+        attributeName = `#attr${attributeName}`;
       }
-      case "#tagname": {
-        /**
-         * #tagname="expression"
-         * attributeValue is the expression which should be evaluated to a string which will
-         * replace the element's tag name.
-         * If the expression evaluates to a falsey value, the default tag name will be used.
-         * If the expression evaluates to a non-string value, the default tag name will be used.
-         */
-        const { code, resultVariableName } =
-          processExpressionString(attributeValue);
 
-        node.tagName = `\$\{(()=>{
+      if (attributeName[0] !== "#") {
+        // Pass static attributes through to the output
+        (staticAttributes ??= {})[attributeName] = attributeValue;
+        continue;
+      }
+
+      if (attributeName === "#") {
+        // Skip comment attributes
+        continue;
+      }
+
+      const [baseAttributeName, attributeModifier] = attributeName.split(":");
+
+      switch (baseAttributeName) {
+        case "#md": {
+          /**
+           * #md
+           * attributeValue is ignored
+           * If the element has children, they will be parsed as markdown
+           */
+          shouldParseChildrenAsMarkdown = true;
+          break;
+        }
+        case "#tagname": {
+          /**
+           * #tagname="expression"
+           * attributeValue is the expression which should be evaluated to a string which will
+           * replace the element's tag name.
+           * If the expression evaluates to a falsey value, the default tag name will be used.
+           * If the expression evaluates to a non-string value, the default tag name will be used.
+           */
+          const { code, resultVariableName } =
+            processExpressionString(attributeValue);
+
+          node.TagName = `\$\{(()=>{
           ${code}
           if(${resultVariableName} && typeof ${resultVariableName} === "string"){
             return ${resultVariableName};
           }
-          return "${node.tagName}";
+          return "${node.TagName}";
         })()\}`;
-        break;
-      }
-      case "#attr": {
-        /**
-         * #attr:attrName="expression"
-         * attributeModifier is the attribute name
-         * attributeValue is the expression which should be evaluated to the attribute's value
-         */
-        const { code, resultVariableName } =
-          processExpressionString(attributeValue);
+          break;
+        }
+        case "#attr": {
+          /**
+           * #attr:attrName="expression"
+           * attributeModifier is the attribute name
+           * attributeValue is the expression which should be evaluated to the attribute's value
+           */
+          const { code, resultVariableName } =
+            processExpressionString(attributeValue);
 
-        imports.renderAttributeToString = "#tmph/render/renderAttributes.js";
+          imports.renderAttributeToString = "#tmph/render/renderAttributes.js";
 
-        dynamicAttributes ??= {};
+          dynamicAttributes ??= {};
 
-        // Attribute spreading syntax means the attribute value should be an object
-        // and we should spread the object's properties into the element's attributes
-        if (attributeModifier === "...") {
-          dynamicAttributes["..."] = `(()=>{
+          // Attribute spreading syntax means the attribute value should be an object
+          // and we should spread the object's properties into the element's attributes
+          if (attributeModifier === "...") {
+            dynamicAttributes["..."] = `(()=>{
             ${code}
             if(typeof ${resultVariableName} !== "object") {
               console.warn(\`Attempted to spread non-object value \$\{${resultVariableName}\} onto element attributes\`);
@@ -136,86 +136,87 @@ const render = async (node, imports, meta) => {
             }
             return ${resultVariableName};
           })()`;
-        } else {
-          dynamicAttributes[attributeModifier] = `(()=>{
+          } else {
+            dynamicAttributes[attributeModifier] = `(()=>{
             ${code}
             return ${resultVariableName};
           })()`;
+          }
+
+          break;
         }
+        case "#text": {
+          /**
+           * #text="expression"
+           * attributeValue is the expression which should be evaluated to an escaped string which will
+           * replace the element's children.
+           */
+          const { code, resultVariableName } =
+            processExpressionString(attributeValue);
 
-        break;
-      }
-      case "#text": {
-        /**
-         * #text="expression"
-         * attributeValue is the expression which should be evaluated to an escaped string which will
-         * replace the element's children.
-         */
-        const { code, resultVariableName } =
-          processExpressionString(attributeValue);
+          imports.escapeText = "#tmph/render/escapeText.js";
 
-        imports.escapeText = "#tmph/render/escapeText.js";
-
-        node.children = [
-          `\$\{escapeText((()=>{
+          node.Children = [
+            `\$\{escapeText((()=>{
               ${code}
               return ${resultVariableName};
             })())\}`,
-        ];
+          ];
 
-        break;
-      }
-      case "#html": {
-        /**
-         * #html="expression"
-         * attributeValue is the expression which should be evaluated to an HTML content string which will
-         * replace the element's children without being escaped.
-         */
-        const { code, resultVariableName } =
-          processExpressionString(attributeValue);
+          break;
+        }
+        case "#html": {
+          /**
+           * #html="expression"
+           * attributeValue is the expression which should be evaluated to an HTML content string which will
+           * replace the element's children without being escaped.
+           */
+          const { code, resultVariableName } =
+            processExpressionString(attributeValue);
 
-        imports.html = "#tmph/render/html.js";
+          imports.html = "#tmph/render/html.js";
 
-        node.children = [
-          `\$\{html((()=>{
+          node.Children = [
+            `\$\{html((()=>{
               ${code}
               return ${resultVariableName};
             })())\}`,
-        ];
-        break;
-      }
-      case "#with":
-      case "#if":
-      case "#for":
-      case "#for-range": {
-        if (typeof attributeValue !== "string") {
-          // Continue to the default error case if the attribute value is not a string
-          continue;
+          ];
+          break;
+        }
+        case "#with":
+        case "#if":
+        case "#for":
+        case "#for-range": {
+          if (typeof attributeValue !== "string") {
+            // Continue to the default error case if the attribute value is not a string
+            continue;
+          }
+
+          (scopedRenderAttributes ??= []).push({
+            name: baseAttributeName,
+            modifier: attributeModifier,
+            value: attributeValue,
+          });
+          break;
         }
 
-        (scopedRenderAttributes ??= []).push({
-          name: baseAttributeName,
-          modifier: attributeModifier,
-          value: attributeValue,
-        });
-        break;
+        default:
+          console.error(
+            `Received invalid render attribute ${attributeName}${
+              attributeValue === true ? "" : `=${attributeValue}`
+            }. Check for typos.`
+          );
       }
-
-      default:
-        console.error(
-          `Received invalid render attribute ${attributeName}${
-            attributeValue === true ? "" : `=${attributeValue}`
-          }. Check for typos.`
-        );
     }
   }
 
   let renderedElement = "";
 
   const isImportedComponent =
-    meta.componentImports && node.tagName in meta.componentImports;
+    meta.componentImports && node.TagName in meta.componentImports;
   const isInlineComponent =
-    meta.inlineComponents && node.tagName in meta.inlineComponents;
+    meta.inlineComponents && node.TagName in meta.inlineComponents;
 
   if (isImportedComponent || isInlineComponent) {
     let propsString = "";
@@ -252,15 +253,15 @@ const render = async (node, imports, meta) => {
     /** @type {Record<string, Promise<string>[]> | null} */
     let namedSlots = null;
 
-    if (node.children) {
-      for (const child of node.children) {
+    if (node.Children) {
+      for (const child of node.Children) {
         if (typeof child === "string") {
           (defaultSlotContent ??= []).push(child);
         } else {
-          if (typeof child.attributes?.slot === "string") {
-            const slotName = child.attributes.slot;
+          if (typeof staticAttributes?.slot === "string") {
+            const slotName = staticAttributes.slot;
             // Delete the slot attribute so it doesn't get rendered
-            delete child.attributes.slot;
+            delete staticAttributes.slot;
             ((namedSlots ??= {})[slotName] ??= []).push(
               render(child, imports, meta)
             );
@@ -289,13 +290,13 @@ const render = async (node, imports, meta) => {
       stringifiedNamedSlots = "null";
     }
 
-    renderedElement = `\$\{await ${node.tagName}.render({
+    renderedElement = `\$\{await ${node.TagName}.render({
       props: ${propsString ? `{${propsString}}` : "null"},
       slot: ${defaultSlotString ? `\`${defaultSlotString}\`` : "null"},
       namedSlots: ${stringifiedNamedSlots},
     })\}`;
   } else {
-    const isFragment = node.tagName === "_";
+    const isFragment = node.TagName === "_";
 
     if (!isFragment) {
       let attributesString = "";
@@ -330,22 +331,22 @@ const render = async (node, imports, meta) => {
         }
       }
 
-      renderedElement = `<${node.tagName}${attributesString}>`;
+      renderedElement = `<${node.TagName}${attributesString}>`;
     }
 
     /** @type {string} */
     let childrenString = "";
 
-    if (node.children) {
+    if (node.Children) {
       /** @type {Array<string | Promise<string>>} */
-      const childRenderPromises = new Array(node.children.length);
-      for (const child of node.children) {
+      const childRenderPromises = new Array(node.Children.length);
+      for (const child of node.Children) {
         if (typeof child === "string") {
           childRenderPromises.push(child);
         } else {
-          if (child.tagName === "slot") {
-            if (child.attributes?.name) {
-              const slotName = child.attributes.name;
+          if (child.TagName === "slot") {
+            const slotName = getNodeAttributeValue(child, "name");
+            if (slotName) {
               // Delete the slot attribute so it doesn't get rendered
               childRenderPromises.push(`\$\{namedSlots?.${slotName} ?? ""\}`);
             } else {
@@ -374,15 +375,15 @@ const render = async (node, imports, meta) => {
     renderedElement += childrenString;
 
     if (!isFragment) {
-      const isVoid = node.tagName in voidTagNames;
+      const isVoid = node.TagName in voidTagNames;
 
       if (!isVoid || Boolean(childrenString)) {
         if (isVoid) {
           console.warn(
-            `Void tag <${node.tagName}> unexpectedly received child content`
+            `Void tag <${node.TagName}> unexpectedly received child content`
           );
         }
-        renderedElement += `</${node.tagName}>`;
+        renderedElement += `</${node.TagName}>`;
       }
     }
   }
@@ -477,10 +478,9 @@ export async function compileComponent(componentPath) {
     return cache[componentPath];
   }
 
-  const componentString = readFileSync(componentPath, "utf8");
-
-  const parsedRoot = parseXML(componentString);
-  const meta = gatherComponentMeta(parsedRoot);
+  const rootNodes = parseXML(componentPath);
+  /** @type {Meta} */
+  const meta = gatherComponentMeta(rootNodes, {});
 
   /** @type {Record<string, string>} */
   const imports = {};
@@ -508,7 +508,7 @@ export async function compileComponent(componentPath) {
 
   const renderPromises = [];
 
-  for (const node of parsedRoot.children) {
+  for (const node of rootNodes) {
     renderPromises.push(render(node, imports, meta));
   }
 
