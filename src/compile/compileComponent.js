@@ -1,8 +1,6 @@
 import { writeFileSync } from "node:fs";
 import path from "node:path";
 
-import esbuild from "esbuild";
-
 import renderAttributeToString from "../render/renderAttributes.js";
 import md from "../render/md.js";
 import { processExpressionString } from "./parseExpressionString.js";
@@ -43,8 +41,8 @@ const render = async (node, imports, meta) => {
     return node;
   }
 
-  if (!node.TagName) {
-    return node.Children?.join("\n") ?? "";
+  if (!node.tagName) {
+    return node.children?.join("\n") ?? "";
   }
 
   /**
@@ -62,8 +60,8 @@ const render = async (node, imports, meta) => {
   /** @type {Record<string, string|true> | null} */
   let dynamicAttributes = null;
 
-  if (node.Attributes) {
-    for (let [attributeName, attributeValue] of node.Attributes) {
+  if (node.attributes) {
+    for (let [attributeName, attributeValue] of node.attributes) {
       if (attributeName[0] === ":") {
         // :attrName is a shorthand for #attr:attrName
         attributeName = `#attr${attributeName}`;
@@ -100,16 +98,9 @@ const render = async (node, imports, meta) => {
            * If the expression evaluates to a falsey value, the default tag name will be used.
            * If the expression evaluates to a non-string value, the default tag name will be used.
            */
-          const { code, resultVariableName } =
-            processExpressionString(attributeValue);
+          const code = processExpressionString(attributeValue);
 
-          node.TagName = `\$\{(()=>{
-          ${code}
-          if(${resultVariableName} && typeof ${resultVariableName} === "string"){
-            return ${resultVariableName};
-          }
-          return "${node.TagName}";
-        })()\}`;
+          node.tagName = `\$\{${code} ?? "${node.tagName}"\}`;
           break;
         }
         case "#attr": {
@@ -118,8 +109,7 @@ const render = async (node, imports, meta) => {
            * attributeModifier is the attribute name
            * attributeValue is the expression which should be evaluated to the attribute's value
            */
-          const { code, resultVariableName } =
-            processExpressionString(attributeValue);
+          const code = processExpressionString(attributeValue);
 
           imports.renderAttributeToString = "#tmph/render/renderAttributes.js";
 
@@ -128,19 +118,17 @@ const render = async (node, imports, meta) => {
           // Attribute spreading syntax means the attribute value should be an object
           // and we should spread the object's properties into the element's attributes
           if (attributeModifier === "...") {
+            const resultVariableName = `__tmph_result_${getRandomString()}`;
             dynamicAttributes["..."] = `(()=>{
-            ${code}
-            if(typeof ${resultVariableName} !== "object") {
-              console.warn(\`Attempted to spread non-object value \$\{${resultVariableName}\} onto element attributes\`);
-              return {};
-            }
-            return ${resultVariableName};
-          })()`;
+              const ${resultVariableName} = ${code};
+              if(typeof ${resultVariableName} !== "object") {
+                console.warn(\`Attempted to spread non-object value \$\{${resultVariableName}\} onto element attributes\`);
+                return {};
+              }
+              return ${resultVariableName};
+            })()`;
           } else {
-            dynamicAttributes[attributeModifier] = `(()=>{
-            ${code}
-            return ${resultVariableName};
-          })()`;
+            dynamicAttributes[attributeModifier] = code;
           }
 
           break;
@@ -151,17 +139,11 @@ const render = async (node, imports, meta) => {
            * attributeValue is the expression which should be evaluated to an escaped string which will
            * replace the element's children.
            */
-          const { code, resultVariableName } =
-            processExpressionString(attributeValue);
+          const code = processExpressionString(attributeValue);
 
           imports.escapeText = "#tmph/render/escapeText.js";
 
-          node.Children = [
-            `\$\{escapeText((()=>{
-              ${code}
-              return ${resultVariableName};
-            })())\}`,
-          ];
+          node.children = [`\$\{escapeText(${code})\}`];
 
           break;
         }
@@ -171,17 +153,11 @@ const render = async (node, imports, meta) => {
            * attributeValue is the expression which should be evaluated to an HTML content string which will
            * replace the element's children without being escaped.
            */
-          const { code, resultVariableName } =
-            processExpressionString(attributeValue);
+          const code = processExpressionString(attributeValue);
 
           imports.html = "#tmph/render/html.js";
 
-          node.Children = [
-            `\$\{html((()=>{
-              ${code}
-              return ${resultVariableName};
-            })())\}`,
-          ];
+          node.children = [`\$\{html(${code})\}`];
           break;
         }
         case "#with":
@@ -214,9 +190,9 @@ const render = async (node, imports, meta) => {
   let renderedElement = "";
 
   const isImportedComponent =
-    meta.componentImports && node.TagName in meta.componentImports;
+    meta.componentImports && node.tagName in meta.componentImports;
   const isInlineComponent =
-    meta.inlineComponents && node.TagName in meta.inlineComponents;
+    meta.inlineComponents && node.tagName in meta.inlineComponents;
 
   if (isImportedComponent || isInlineComponent) {
     let propsString = "";
@@ -253,8 +229,8 @@ const render = async (node, imports, meta) => {
     /** @type {Record<string, Promise<string>[]> | null} */
     let namedSlots = null;
 
-    if (node.Children) {
-      for (const child of node.Children) {
+    if (node.children) {
+      for (const child of node.children) {
         if (typeof child === "string") {
           (defaultSlotContent ??= []).push(child);
         } else {
@@ -290,13 +266,13 @@ const render = async (node, imports, meta) => {
       stringifiedNamedSlots = "null";
     }
 
-    renderedElement = `\$\{await ${node.TagName}.render({
+    renderedElement = `\$\{await ${node.tagName}.render({
       props: ${propsString ? `{${propsString}}` : "null"},
       slot: ${defaultSlotString ? `\`${defaultSlotString}\`` : "null"},
       namedSlots: ${stringifiedNamedSlots},
     })\}`;
   } else {
-    const isFragment = node.TagName === "_";
+    const isFragment = node.tagName === "_";
 
     if (!isFragment) {
       let attributesString = "";
@@ -331,33 +307,43 @@ const render = async (node, imports, meta) => {
         }
       }
 
-      renderedElement = `<${node.TagName}${attributesString}>`;
+      renderedElement = `<${node.tagName}${attributesString}>`;
     }
 
     /** @type {string} */
     let childrenString = "";
 
-    if (node.Children) {
+    if (node.children) {
+      const childCount = node.children.length;
       /** @type {Array<string | Promise<string>>} */
-      const childRenderPromises = new Array(node.Children.length);
-      for (const child of node.Children) {
+      const childRenderPromises = new Array(childCount);
+      const childStringArray = new Array(childCount);
+
+      for (let i = 0; i < childCount; ++i) {
+        const child = node.children[i];
+
         if (typeof child === "string") {
-          childRenderPromises.push(child);
+          childStringArray[i] = child;
         } else {
-          if (child.TagName === "slot") {
+          if (child.tagName === "slot") {
             const slotName = getNodeAttributeValue(child, "name");
             if (slotName) {
-              // Delete the slot attribute so it doesn't get rendered
-              childRenderPromises.push(`\$\{namedSlots?.${slotName} ?? ""\}`);
+              childStringArray[i] = `\$\{namedSlots?.${slotName} ?? ""\}`;
             } else {
-              childRenderPromises.push(`\$\{slot ?? ""\}`);
+              childStringArray[i] = `\$\{slot ?? ""\}`;
             }
           } else {
-            childRenderPromises.push(render(child, imports, meta));
+            childRenderPromises.push(
+              render(child, imports, meta).then(
+                (str) => (childStringArray[i] = str)
+              )
+            );
           }
         }
       }
-      childrenString = (await Promise.all(childRenderPromises)).join("\n");
+
+      await Promise.all(childRenderPromises);
+      childrenString = childStringArray.join("");
     }
 
     if (childrenString && shouldParseChildrenAsMarkdown) {
@@ -375,15 +361,15 @@ const render = async (node, imports, meta) => {
     renderedElement += childrenString;
 
     if (!isFragment) {
-      const isVoid = node.TagName in voidTagNames;
+      const isVoid = node.tagName in voidTagNames;
 
       if (!isVoid || Boolean(childrenString)) {
         if (isVoid) {
           console.warn(
-            `Void tag <${node.TagName}> unexpectedly received child content`
+            `Void tag <${node.tagName}> unexpectedly received child content`
           );
         }
-        renderedElement += `</${node.TagName}>`;
+        renderedElement += `</${node.tagName}>`;
       }
     }
   }
@@ -399,26 +385,23 @@ const render = async (node, imports, meta) => {
           }
 
           renderedElement = `\$\{await (async ()=>{
-            ${processExpressionString(attribute.value, attribute.modifier).code}
+            ${attribute.modifier} = ${processExpressionString(attribute.value)};
             return \`${renderedElement}\`;
           })()\}`;
           break;
         }
         case "#if": {
-          const { code, resultVariableName } = processExpressionString(
-            attribute.value
-          );
+          const code = processExpressionString(attribute.value);
 
           renderedElement = `\$\{await (async ()=>{
-            ${code}
-            return ${resultVariableName} ? \`${renderedElement}\` : "";
+            return ${code} ? \`${renderedElement}\` : "";
           })()\}`;
           break;
         }
         case "#for": {
-          const { code, resultVariableName } = processExpressionString(
-            attribute.value
-          );
+          const code = processExpressionString(attribute.value);
+
+          const itemListVariableName = `__tmph_items_${getRandomString()}`;
 
           const [
             itemName = `__tmph_item_${getRandomString()}`,
@@ -428,10 +411,10 @@ const render = async (node, imports, meta) => {
           const renderStringVariableName = `__tmph_render_${getRandomString()}`;
 
           renderedElement = `\$\{await (async ()=> {
-                ${code}
+                const ${itemListVariableName} = ${code};
                 let ${renderStringVariableName} = "";
                 let ${indexName} = 0;
-                for(const ${itemName} of ${resultVariableName}){
+                for(const ${itemName} of ${itemListVariableName}){
                   ${renderStringVariableName} += \`${renderedElement}\`;
                   ++${indexName};
                 }
@@ -440,9 +423,9 @@ const render = async (node, imports, meta) => {
           break;
         }
         case "#for-range": {
-          const { code, resultVariableName } = processExpressionString(
-            attribute.value
-          );
+          const code = processExpressionString(attribute.value);
+
+          const itemListVariableName = `__tmph_items_${getRandomString()}`;
 
           const itemName =
             attribute.modifier || `__tmph_item_${getRandomString()}`;
@@ -450,8 +433,8 @@ const render = async (node, imports, meta) => {
           imports.renderForRange = "#tmph/render/renderForRange.js";
 
           renderedElement = `\$\{(()=> {
-                ${code};
-                return renderForRange(${resultVariableName}, (${itemName}) => {
+                const ${itemListVariableName} = ${code};
+                return renderForRange(${itemListVariableName}, (${itemName}) => {
                   return \`${renderedElement}\`;
                 });
               })()\}`;
@@ -478,7 +461,7 @@ export async function compileComponent(componentPath) {
     return cache[componentPath];
   }
 
-  const rootNodes = parseXML(componentPath);
+  const rootNodes = await parseXML(componentPath);
   /** @type {Meta} */
   const meta = gatherComponentMeta(rootNodes, {});
 
@@ -550,18 +533,19 @@ export async function compileComponent(componentPath) {
 
   writeFileSync(
     outputPath,
-    esbuild.transformSync(
-      `
+    `
     ${importsString}
     ${inlineComponentsString}
     ${meta.jsDoc ?? ""}
+    /**
+     * @param {Object} params
+     * @param {Props} params.props
+     * @param {string|null} params.slot
+     * @param {Record<string, string>|null} params.namedSlots
+     */
     export async function render({ props, slot, namedSlots }) {
       return \`${renderString}\`;
-    }`,
-      {
-        minify: true,
-      }
-    ).code
+    }`
   );
 
   return outputPath;

@@ -34,16 +34,14 @@ export function gatherComponentMeta(nodeList, meta) {
   for (; i < childCount; ++i) {
     const child = /** @type {string | TmphNode} */ (nodeList[i]);
 
-    console.log("child", child);
-
     if (typeof child === "string") {
       continue;
     }
 
-    const { TagName: tagName, Children: children } = child;
+    const { tagName: tagName, children: children } = child;
 
     if (tagName === "link") {
-      if (!child.Attributes) {
+      if (!child.attributes) {
         throw new Error("Received invalid <link> element without attributes");
       }
 
@@ -114,8 +112,8 @@ export function gatherComponentMeta(nodeList, meta) {
       }
     }
 
-    if (child.Children) {
-      gatherComponentMeta(child.Children, meta);
+    if (child.children) {
+      gatherComponentMeta(child.children, meta);
     }
   }
 

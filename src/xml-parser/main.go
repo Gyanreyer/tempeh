@@ -7,9 +7,18 @@ import (
 )
 
 type TmphNode struct {
-	TagName    string
-	Attributes AttributeArray
-	Children   []any
+	TagName    string         `json:"tagName"`
+	Attributes AttributeArray `json:"attributes"`
+	Children   []any          `json:"children"`
+}
+
+func getCurrentNode(nodeTree []*TmphNode) *TmphNode {
+	nodeTreeLen := len(nodeTree)
+	if nodeTreeLen == 0 {
+		return nil
+	}
+
+	return nodeTree[nodeTreeLen-1]
 }
 
 func main() {
@@ -25,28 +34,22 @@ func main() {
 		panic(err)
 	}
 
+	os.Stdout.Write([]byte{'['})
+
+	isFirstNode := true
+
 	fileStr := string(fileBytes)
 
 	cursor := Cursor{index: 0, str: fileStr, maxIndex: len(fileStr) - 1}
 
-	rootNode := TmphNode{
-		TagName:    "",
-		Attributes: nil,
-		Children:   make([]any, 0),
-	}
-
 	nodeTree := make([]*TmphNode, 0)
 
 	for cursor.index < cursor.maxIndex {
-		currentNode := &rootNode
-
-		nodeTreeLen := len(nodeTree)
-		if nodeTreeLen >= 1 {
-			currentNode = nodeTree[nodeTreeLen-1]
-		}
+		currentNode := getCurrentNode(nodeTree)
 
 		shouldPreserveWhitespace := false
 
+		nodeTreeLen := len(nodeTree)
 		visitNodeIndex := nodeTreeLen - 1
 		for visitNodeIndex >= 0 {
 			if nodeTree[visitNodeIndex].TagName == "pre" || nodeTree[visitNodeIndex].TagName == "textarea" {
@@ -58,7 +61,23 @@ func main() {
 
 		textContent, isClosingTag := cursor.ReadUntilTag(shouldPreserveWhitespace)
 		if textContent != "" {
-			currentNode.Children = append(currentNode.Children, textContent)
+			if currentNode == nil {
+				stringifiedNode, err := json.Marshal(textContent)
+
+				if err != nil {
+					panic(err)
+				}
+
+				if !isFirstNode {
+					// If this isn't the first node, add a comma separating it from the previous node
+					os.Stdout.Write([]byte{','})
+				} else {
+					isFirstNode = false
+				}
+				os.Stdout.Write(stringifiedNode)
+			} else {
+				currentNode.Children = append(currentNode.Children, textContent)
+			}
 		}
 
 		if cursor.index >= cursor.maxIndex {
@@ -73,11 +92,22 @@ func main() {
 				closingNodeTagName := currentNode.TagName
 
 				nodeTreeLen -= 1
-				nodeTree = nodeTree[:nodeTreeLen]
 				if nodeTreeLen >= 1 {
 					currentNode = nodeTree[nodeTreeLen-1]
-				} else {
-					currentNode = &rootNode
+				} else if currentNode != nil {
+					stringifiedNode, err := json.Marshal(currentNode)
+
+					if err != nil {
+						panic(err)
+					}
+
+					if !isFirstNode {
+						// If this isn't the first node, add a comma separating it from the previous node
+						os.Stdout.Write([]byte{','})
+					} else {
+						isFirstNode = false
+					}
+					os.Stdout.Write(stringifiedNode)
 				}
 
 				if closingNodeTagName == closedTagName {
@@ -86,6 +116,8 @@ func main() {
 					break
 				}
 			}
+
+			nodeTree = nodeTree[:nodeTreeLen]
 		} else {
 			openedTagName, attributes, isVoidElement := cursor.ReadOpeningTag()
 
@@ -94,16 +126,53 @@ func main() {
 				Attributes: attributes,
 				Children:   nil,
 			}
-			currentNode.Children = append(currentNode.Children, newNode)
 
-			if !isVoidElement {
+			if isVoidElement {
+				// If we're at the root node, write it out
+				if currentNode == nil {
+					stringifiedNode, err := json.Marshal(newNode)
 
+					if err != nil {
+						panic(err)
+					}
+
+					if !isFirstNode {
+						// If this isn't the first node, add a comma separating it from the previous node
+						os.Stdout.Write([]byte{','})
+					} else {
+						isFirstNode = false
+					}
+					os.Stdout.Write(stringifiedNode)
+				} else {
+					currentNode.Children = append(currentNode.Children, newNode)
+				}
+			} else {
 				if openedTagName == "script" || openedTagName == "style" {
 					elementTextContent := cursor.ReadToMatchingClosingTag(openedTagName, false)
 					if elementTextContent != "" {
 						newNode.Children = append(newNode.Children, elementTextContent)
+
+						// Script and style tags should be hoisted to the root, so just write them out
+						// right away
+						stringifiedNode, err := json.Marshal(newNode)
+
+						if err != nil {
+							panic(err)
+						}
+
+						if !isFirstNode {
+							// If this isn't the first node, add a comma separating it from the previous node
+							os.Stdout.Write([]byte{','})
+						} else {
+							isFirstNode = false
+						}
+						os.Stdout.Write(stringifiedNode)
 					}
 				} else {
+					if currentNode != nil {
+						currentNode.Children = append(currentNode.Children, newNode)
+					}
+
 					newNode.Children = make([]any, 0)
 					currentNode = newNode
 					nodeTree = append(nodeTree, currentNode)
@@ -113,10 +182,5 @@ func main() {
 		}
 	}
 
-	stringifiedRoot, err := json.Marshal(rootNode.Children)
-	if err != nil {
-		panic(err)
-	}
-
-	os.Stdout.Write(stringifiedRoot)
+	os.Stdout.Write([]byte{']'})
 }

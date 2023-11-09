@@ -193,7 +193,7 @@ func (c *Cursor) ReadUntilTag(shouldPreserveWhitespace bool) (string, bool) {
 	textEndIndex := c.index
 	trailingChar, err := c.At(textEndIndex - 1)
 
-	for !shouldPreserveWhitespace && textEndIndex > textStartIndex && err == nil && isWhiteSpace(trailingChar) {
+	for !isClosingTag && !shouldPreserveWhitespace && textEndIndex > textStartIndex && err == nil && isWhiteSpace(trailingChar) {
 		textEndIndex--
 		trailingChar, err = c.At(textEndIndex - 1)
 	}

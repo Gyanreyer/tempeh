@@ -5,8 +5,8 @@
  * @param {string} attributeName
  */
 export function getNodeAttributeValue(node, attributeName) {
-  if (node.Attributes) {
-    for (const [name, value] of node.Attributes) {
+  if (node.attributes) {
+    for (const [name, value] of node.attributes) {
       if (name === attributeName) {
         return value;
       }

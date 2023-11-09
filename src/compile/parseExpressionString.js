@@ -1,15 +1,10 @@
-import { getRandomString } from "../utils/getRandomString.js";
-
 // Regex matches the last line of a JavaScript expression
 const lastLineOfExpressionRegex = /;?(.+)[;\s]?$/;
 
 /**
  * @param {unknown} expressionString
  */
-export function processExpressionString(
-  expressionString,
-  resultVariableName = `__tmph_expr__${getRandomString()}`
-) {
+export function processExpressionString(expressionString) {
   if (typeof expressionString !== "string") {
     throw new Error("Received invalid expression value");
   }
@@ -23,13 +18,14 @@ export function processExpressionString(
   }
 
   const lastExpressionLine = lastLineOfExpressionMatch[0];
-  const code = expressionString.slice(0, lastLineOfExpressionMatch.index);
+  const setupExpressionLines = expressionString
+    .slice(0, lastLineOfExpressionMatch.index)
+    .trim();
 
-  return {
-    code: `
-      ${code}
-      let ${resultVariableName} = (${lastExpressionLine});
-    `,
-    resultVariableName,
-  };
+  return setupExpressionLines
+    ? `(()=>{
+    ${setupExpressionLines}
+    return ${lastExpressionLine}
+  })()`
+    : lastExpressionLine;
 }

@@ -10,5 +10,8 @@
     "#tmph/render/*": {
       "node": "./src/render/*"
     }
+  },
+  "scripts": {
+    "build-xml-parser": "go build -C ./src/xml-parser -o ../../bin/parse-xml "
   }
 }
