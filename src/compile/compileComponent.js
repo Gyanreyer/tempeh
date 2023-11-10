@@ -1,5 +1,8 @@
-import { writeFileSync } from "node:fs";
+import { writeFile, readFile, access } from "node:fs/promises";
 import path from "node:path";
+import { createHash } from "node:crypto";
+import { createReadStream } from "node:fs";
+import readline from "node:readline/promises";
 
 import { parseXML } from "./parseXML.js";
 import { gatherComponentMeta } from "./gatherComponentMeta.js";
@@ -10,27 +13,50 @@ import { deepPreventExtensions } from "../utils/deepPreventExtensions.js";
 /** @typedef {import("./parseXML.js").TmphNode} TmphNode */
 /** @typedef {import("./gatherComponentMeta.js").Meta} Meta */
 
-/**
- * Cache maps component paths to compiled code paths.
- * @type {Record<string, string>}
- */
-const cache = {};
+// Regex to match whether the render string references a props variable
+const propsVariableRegex = /\bprops\b/;
 
 /**
  * @param {string} componentPath
  */
 export async function compileComponent(componentPath) {
-  if (cache[componentPath]) {
-    return cache[componentPath];
-  }
+  const componentDirectory = path.dirname(componentPath);
+  const outputPath = path.resolve(
+    componentDirectory,
+    `./${path.basename(componentPath, ".html")}.js`
+  );
+
+  // Create a hash of the source component file contents which we will embed in
+  // the compiled component file. This will allow us to check if the source component
+  // file has changed and needs to be re-compiled
+  const componentFileContents = await readFile(componentPath);
+  const integrityHash = createHash("sha256")
+    .update(componentFileContents)
+    .digest("hex");
+
+  const integrityComment = `// __tmph_integrity=${integrityHash}`;
+
+  try {
+    // Read the first line of the existing compiled component file (if one exists)
+    // and check if it matches the source file's integrity hash. If it does, we can skip re-compiling
+    const inputStream = createReadStream(outputPath);
+    try {
+      for await (const line of readline.createInterface(inputStream)) {
+        if (line.startsWith(integrityComment)) {
+          return outputPath;
+        }
+        break;
+      }
+    } finally {
+      inputStream.close();
+    }
+  } catch {}
 
   const rootNodes = await parseXML(componentPath);
   const meta = deepPreventExtensions(gatherComponentMeta(rootNodes, {}));
 
   /** @type {Record<string, string>} */
   const imports = {};
-
-  const componentDirectory = path.dirname(componentPath);
 
   if (meta.componentImports) {
     const resolveComponentImportPromises = [];
@@ -42,8 +68,8 @@ export async function compileComponent(componentPath) {
       );
 
       resolveComponentImportPromises.push(
-        compileComponent(filePath).then((outputPath) => {
-          imports[`* as ${componentName}`] = outputPath;
+        compileComponent(filePath).then((path) => {
+          imports[`* as ${componentName}`] = path;
         })
       );
     }
@@ -116,17 +142,50 @@ export async function compileComponent(componentPath) {
     importsString += `import ${importMethod} from "${imports[importMethod]}";\n`;
   }
 
-  const outputPath = path.resolve(
-    componentDirectory,
-    `./${path.basename(componentPath, ".html")}.js`
-  );
+  const doesRenderStringUseProps = propsVariableRegex.test(renderString);
 
-  writeFileSync(
+  const hasDefaultSlot = meta.hasDefaultSlot;
+  const namedSlots = meta.namedSlots;
+
+  const shouldIncludeJSdoc =
+    doesRenderStringUseProps || hasDefaultSlot || namedSlots;
+
+  await writeFile(
     outputPath,
-    `${importsString}
+    `${integrityComment}
+${importsString}
 ${inlineComponentsString}
-${makeComponentJSdoc(meta.jsDoc ?? "")}
-export async function render({ props, slot, namedSlots }) {
+${
+  shouldIncludeJSdoc
+    ? `
+/**
+ * @param {Object} params${
+   doesRenderStringUseProps
+     ? `
+ * @param {Props} params.props`
+     : ""
+ }
+${
+  hasDefaultSlot
+    ? `
+ * @param {string} [params.slot]`
+    : ""
+}${
+        namedSlots
+          ? `
+ * @param {{ [key in ${namedSlots.join("|")}]?: string }} [params.namedSlots]`
+          : ""
+      }
+ */`
+    : ""
+}
+export async function render(params) {${
+      meta.hasDefaultSlot ? 'const slot = params.slot ?? "";\n' : ""
+    }${
+      meta.hasDefaultSlot ? "const namedSlots = params.namedSlots ?? {};\n" : ""
+    }
+  const props = params.props;
+
   return \`${renderString}\`;
 }`
   );

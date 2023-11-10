@@ -10,6 +10,8 @@ import { getNodeAttributeValue } from "./getNodeAttributeValue.js";
  *  componentImports?: { [componentName: string]: string; };
  *  inlineComponents?: { [componentName: string]: Array<TmphNode | string>; };
  *  jsDoc?: string;
+ *  hasDefaultSlot?: boolean;
+ *  namedSlots?: string[];
  * }} Meta
  */
 
@@ -40,75 +42,91 @@ export function gatherComponentMeta(nodeList, meta) {
 
     const { tagName: tagName, children: children } = child;
 
-    if (tagName === "link") {
-      if (!child.attributes) {
-        throw new Error("Received invalid <link> element without attributes");
-      }
-
-      const rel = getNodeAttributeValue(child, "rel");
-
-      if (!rel || typeof rel !== "string") {
-        throw new Error(
-          `Received <link> element without a valid rel attribute`
-        );
-      }
-
-      const href = getNodeAttributeValue(child, "href");
-
-      if (!href || typeof href !== "string") {
-        throw new Error(
-          `Received <link> element without a valid href attribute`
-        );
-      }
-
-      if (rel === "stylesheet") {
-        (meta.stylesheets ??= []).push(href);
-        // Remove the link element so it isn't rendered
-        removeCurrentChild();
-        continue;
-      } else if (rel === "import") {
-        let componentName = getNodeAttributeValue(child, "as");
-
-        if (!componentName || typeof componentName !== "string") {
-          componentName = extractComponentName(href);
+    switch (tagName) {
+      case "link": {
+        if (!child.attributes) {
+          throw new Error("Received invalid <link> element without attributes");
         }
 
-        (meta.componentImports ??= {})[componentName] = href;
-        // Remove the link element so it isn't rendered
-        removeCurrentChild();
-        continue;
+        const rel = getNodeAttributeValue(child, "rel");
+
+        if (!rel || typeof rel !== "string") {
+          throw new Error(
+            `Received <link> element without a valid rel attribute`
+          );
+        }
+
+        const href = getNodeAttributeValue(child, "href");
+
+        if (!href || typeof href !== "string") {
+          throw new Error(
+            `Received <link> element without a valid href attribute`
+          );
+        }
+
+        if (rel === "stylesheet") {
+          (meta.stylesheets ??= []).push(href);
+          // Remove the link element so it isn't rendered
+          removeCurrentChild();
+          continue;
+        } else if (rel === "import") {
+          let componentName = getNodeAttributeValue(child, "as");
+
+          if (!componentName || typeof componentName !== "string") {
+            componentName = extractComponentName(href);
+          }
+
+          (meta.componentImports ??= {})[componentName] = href;
+          // Remove the link element so it isn't rendered
+          removeCurrentChild();
+          continue;
+        }
+        break;
       }
-    } else if (tagName === "script") {
-      if (getNodeAttributeValue(child, "#types")) {
-        meta.jsDoc = "";
-        if (children) {
-          for (const grandChild of children) {
-            if (typeof grandChild === "string") {
-              meta.jsDoc += grandChild;
+      case "script": {
+        if (getNodeAttributeValue(child, "#types")) {
+          meta.jsDoc = "";
+          if (children) {
+            for (const grandChild of children) {
+              if (typeof grandChild === "string") {
+                meta.jsDoc += grandChild;
+              }
             }
           }
+          removeCurrentChild();
+          continue;
         }
-        removeCurrentChild();
-        continue;
+        break;
       }
-    } else if (tagName === "template") {
-      const inlineComponentName = getNodeAttributeValue(child, "#component");
-      if (inlineComponentName) {
-        if (!inlineComponentName || typeof inlineComponentName !== "string") {
-          throw new Error(
-            `Received invalid template #component name "${inlineComponentName}"`
-          );
-        }
+      case "template": {
+        const inlineComponentName = getNodeAttributeValue(child, "#component");
+        if (inlineComponentName) {
+          if (!inlineComponentName || typeof inlineComponentName !== "string") {
+            throw new Error(
+              `Received invalid template #component name "${inlineComponentName}"`
+            );
+          }
 
-        if (!children) {
-          throw new Error(
-            `Received invalid template #component "${inlineComponentName}" without children`
-          );
-        }
+          if (!children) {
+            throw new Error(
+              `Received invalid template #component "${inlineComponentName}" without children`
+            );
+          }
 
-        (meta.inlineComponents ??= {})[inlineComponentName] = children;
-        removeCurrentChild();
-        continue;
+          (meta.inlineComponents ??= {})[inlineComponentName] = children;
+          removeCurrentChild();
+          continue;
+        }
+        break;
+      }
+      case "slot": {
+        const nameAttribute = getNodeAttributeValue(child, "name");
+        if (nameAttribute && typeof nameAttribute === "string") {
+          (meta.namedSlots ??= []).push(nameAttribute);
+        } else {
+          meta.hasDefaultSlot = true;
+        }
+        break;
       }
     }
 

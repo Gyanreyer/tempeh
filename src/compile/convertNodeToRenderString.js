@@ -271,7 +271,8 @@ export async function convertNodeToRenderString(node, imports, meta) {
     if (namedSlots) {
       stringifiedNamedSlots = "{";
       for (const slotName in namedSlots) {
-        stringifiedNamedSlots += `${slotName}: \`${(
+        // Make sure the name is quoted to support - and _ characters
+        stringifiedNamedSlots += `"${slotName}": \`${(
           await Promise.all(namedSlots[slotName])
         ).join("\n")}\`,`;
       }

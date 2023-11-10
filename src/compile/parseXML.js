@@ -42,6 +42,9 @@ export async function parseXML(path) {
 
         parserProcessArgs[1] = path;
         // Spawn a process to run the parser binary
+        // The binary will read the file at the path passed in,
+        // parse it, and stream the result to stdout as a JSON string
+        // array of TmphNodes objects and strings at the root of the document.
         const process = spawn(parserBinaryPath, parserProcessArgs);
 
         process.on("error", reject);
