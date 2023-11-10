@@ -1,27 +1,30 @@
 import { spawn } from "node:child_process";
+import { join } from "node:path";
+import { tmpdir } from "node:os";
+import { mkdtemp, rm, writeFile } from "node:fs/promises";
 
-/**
- * @typedef {Object} TmphNode
- * @property {string|null} tagName
- * @property {Array<TmphNode | string>|null} children
- * @property {Array<[string, string|true]>|null} attributes
- */
+import { getRandomString } from "../utils/getRandomString.js";
 
-const parserBinaryPath = import.meta
-  .resolve("../../.bin/parse-xml")
+const jsdocBinaryPath = import.meta
+  .resolve("../../node_modules/.bin/jsdoc")
   .replace("file://", "");
 
 // Creating a re-usable array to avoid unnecessary garbage collection
 // for the arguments we'll be passing when spawning the parser process.
-const parserProcessArgs = new Array(2);
-parserProcessArgs[0] = "--file";
+const jsdocProcessArgs = new Array(2);
+jsdocProcessArgs[0] = "-X";
 
 /**
- *
- * @param {string} path
+ * @param {string} jsDocString
  */
-export async function parseXML(path) {
-  return new Promise((resolve, reject) => {
+export async function parseJSdocString(jsDocString) {
+  const tempDir = await mkdtemp(join(tmpdir(), ".tmph-"));
+
+  const tempFilePath = join(tempDir, `${getRandomString()}.js`);
+  await writeFile(tempFilePath, jsDocString);
+
+  /** @type {Array<Object>} */
+  const parsedJSDocData = await new Promise((resolve, reject) => {
     // Concatentating buffers requires an array,
     // so we'll create a re-usable one at the top to avoid
     // unnecessary garbage collection. The first item will represent
@@ -30,9 +33,8 @@ export async function parseXML(path) {
     const bufferArray = new Array(2);
     bufferArray[0] = Buffer.from("", "utf8");
 
-    parserProcessArgs[1] = path;
-    // Spawn a process to run the parser binary
-    const process = spawn(parserBinaryPath, parserProcessArgs);
+    jsdocProcessArgs[1] = tempFilePath;
+    const process = spawn(jsdocBinaryPath, jsdocProcessArgs);
 
     process.on("error", reject);
 
@@ -43,14 +45,10 @@ export async function parseXML(path) {
     });
 
     // Once we've reached the end of the stdout stream, parse the buffer and resolve
-    // with the parsed node data
     process.stdout.on("end", () => {
-      /**
-       * @type {Array<TmphNode|string>}
-       */
-      const rootNodes = JSON.parse(bufferArray[0].toString("utf-8"));
-
-      resolve(rootNodes);
+      resolve(JSON.parse(bufferArray[0].toString("utf-8")));
     });
-  });
+  }).finally(() => rm(tempDir, { recursive: true }));
+
+  return parsedJSDocData;
 }
