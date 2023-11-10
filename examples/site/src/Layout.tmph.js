@@ -5,11 +5,14 @@
    * @typedef  {Object} Props
    * @property {string} [props.title="My Tempeh Site"]
    */
+      /**
+       * @typedef {Record<string, string> | null | undefined} NamedSlots
+       */
     /**
      * @param {Object} params
-     * @param {Props} params.props
-     * @param {string|null} params.slot
-     * @param {Record<string, string>|null} params.namedSlots
+     * @param {Props} [params.props]
+     * @param {NamedSlots} [params.namedSlots]
+     * @param {string|null} [params.slot]
      */
     export async function render({ props, slot, namedSlots }) {
       return `<!DOCTYPE html>

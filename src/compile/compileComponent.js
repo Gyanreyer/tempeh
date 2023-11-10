@@ -8,6 +8,7 @@ import { getRandomString } from "../utils/getRandomString.js";
 import { parseXML } from "./parseXML.js";
 import { gatherComponentMeta } from "./gatherComponentMeta.js";
 import { getNodeAttributeValue } from "./getNodeAttributeValue.js";
+import { makeComponentJSdoc } from "./makeComponentJSdoc.js";
 
 /** @typedef {import("./parseXML.js").TmphNode} TmphNode */
 /** @typedef {import("./gatherComponentMeta.js").Meta} Meta */
@@ -536,13 +537,7 @@ export async function compileComponent(componentPath) {
     `
     ${importsString}
     ${inlineComponentsString}
-    ${meta.jsDoc ?? ""}
-    /**
-     * @param {Object} params
-     * @param {Props} params.props
-     * @param {string|null} params.slot
-     * @param {Record<string, string>|null} params.namedSlots
-     */
+    ${makeComponentJSdoc(meta.jsDoc ?? "")}
     export async function render({ props, slot, namedSlots }) {
       return \`${renderString}\`;
     }`

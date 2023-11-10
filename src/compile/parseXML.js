@@ -8,7 +8,7 @@ import { spawn } from "node:child_process";
  */
 
 const parserBinaryPath = import.meta
-  .resolve("../../bin/parse-xml")
+  .resolve("../../.bin/parse-xml")
   .replace("file://", "");
 
 // Creating a re-usable array to avoid unnecessary garbage collection
