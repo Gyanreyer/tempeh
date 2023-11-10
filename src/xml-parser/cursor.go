@@ -213,10 +213,8 @@ func (c *Cursor) ReadTagName() string {
 	return c.str[startIndex:c.index]
 }
 
-type AttributeArray [][]any
-
-func (c *Cursor) ReadOpeningTagAttributes() AttributeArray {
-	attributes := AttributeArray{}
+func (c *Cursor) ReadOpeningTagAttributes() []interface{} {
+	var attributes []interface{} = nil
 
 	ch, err := c.CurrentChar()
 
@@ -231,6 +229,10 @@ func (c *Cursor) ReadOpeningTagAttributes() AttributeArray {
 			break
 		}
 
+		if attributes == nil {
+			attributes = []interface{}{}
+		}
+
 		attributeNameStartIndex := c.index
 
 		for err == nil && isLegalTagOrAttributeNameChar(ch) {
@@ -241,7 +243,7 @@ func (c *Cursor) ReadOpeningTagAttributes() AttributeArray {
 
 		if ch != '=' {
 			// If there's no =, this is a boolean attribute
-			attributes = append(attributes, []any{attributeName, true})
+			attributes = append(attributes, attributeName, true)
 			continue
 		}
 
@@ -254,7 +256,7 @@ func (c *Cursor) ReadOpeningTagAttributes() AttributeArray {
 		if err != nil {
 			// If we hit the end of the file before reaching an attribute value,
 			// call the value an empty string
-			attributes = append(attributes, []any{attributeName, ""})
+			attributes = append(attributes, attributeName, "")
 			break
 		}
 
@@ -285,7 +287,7 @@ func (c *Cursor) ReadOpeningTagAttributes() AttributeArray {
 			}
 
 			attributeValue := c.str[valueStartIndex:c.index]
-			attributes = append(attributes, []any{attributeName, attributeValue})
+			attributes = append(attributes, attributeName, attributeValue)
 
 			// Skip the closing quote char
 			ch, err = c.AdvanceChar()
@@ -297,7 +299,7 @@ func (c *Cursor) ReadOpeningTagAttributes() AttributeArray {
 			}
 
 			attributeValue := c.str[valueStartIndex:c.index]
-			attributes = append(attributes, []any{attributeName, attributeValue})
+			attributes = append(attributes, attributeName, attributeValue)
 		}
 	}
 
@@ -309,7 +311,7 @@ func (c *Cursor) ReadOpeningTagAttributes() AttributeArray {
 	return attributes
 }
 
-func (c *Cursor) ReadOpeningTag() (string, AttributeArray, bool) {
+func (c *Cursor) ReadOpeningTag() (string, []interface{}, bool) {
 	ch, err := c.CurrentChar()
 
 	// If cursor is on the "<" char, skip it

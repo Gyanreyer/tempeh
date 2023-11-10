@@ -7,9 +7,9 @@ import (
 )
 
 type TmphNode struct {
-	TagName    string         `json:"tagName"`
-	Attributes AttributeArray `json:"attributes"`
-	Children   []any          `json:"children"`
+	TagName    string        `json:"tagName"`
+	Attributes []interface{} `json:"attributes"`
+	Children   []interface{} `json:"children"`
 }
 
 func getCurrentNode(nodeTree []*TmphNode) *TmphNode {
@@ -173,7 +173,7 @@ func main() {
 						currentNode.Children = append(currentNode.Children, newNode)
 					}
 
-					newNode.Children = make([]any, 0)
+					newNode.Children = make([]interface{}, 0)
 					currentNode = newNode
 					nodeTree = append(nodeTree, currentNode)
 					nodeTreeLen++

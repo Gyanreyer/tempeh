@@ -4,11 +4,11 @@ import { spawn } from "node:child_process";
  * @typedef {Object} TmphNode
  * @property {string|null} tagName
  * @property {Array<TmphNode | string>|null} children
- * @property {Array<[string, string|true]>|null} attributes
+ * @property {Array<string|true>|null} attributes
  */
 
 const parserBinaryPath = import.meta
-  .resolve("../../.bin/parse-xml")
+  .resolve("../../bin/parse-xml")
   .replace("file://", "");
 
 // Creating a re-usable array to avoid unnecessary garbage collection
