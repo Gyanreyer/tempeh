@@ -26,17 +26,15 @@ const voidTagNames = {
 };
 
 /**
- * @param {TmphNode|string} node
+ * @param {TmphNode} node
  * @param {Record<string, string>} imports
  * @param {Meta} meta
  * @returns {Promise<string>}
  */
 export async function convertNodeToRenderString(node, imports, meta) {
-  if (typeof node === "string") {
-    return node;
-  }
+  let tagName = node.tagName;
 
-  if (!node.tagName) {
+  if (!tagName) {
     return node.children?.join("\n") ?? "";
   }
 
@@ -101,8 +99,7 @@ export async function convertNodeToRenderString(node, imports, meta) {
            * If the expression evaluates to a non-string value, the default tag name will be used.
            */
           const code = processExpressionString(attributeValue);
-
-          node.tagName = `\$\{${code} ?? "${node.tagName}"\}`;
+          tagName = `\$\{${code} ?? "${tagName}"\}`;
           break;
         }
         case "#attr": {
@@ -145,7 +142,14 @@ export async function convertNodeToRenderString(node, imports, meta) {
 
           imports.escapeText = "#tmph/render/escapeText.js";
 
-          node.children = [`\$\{escapeText(${code})\}`];
+          if (!node.children || node.children.length === 0) {
+            node.children = Object.preventExtensions([
+              `\$\{escapeText(${code})\}`,
+            ]);
+          } else {
+            node.children[0] = `\$\{escapeText(${code})\}`;
+            node.children.length = 1;
+          }
 
           break;
         }
@@ -159,7 +163,13 @@ export async function convertNodeToRenderString(node, imports, meta) {
 
           imports.html = "#tmph/render/html.js";
 
-          node.children = [`\$\{html(${code})\}`];
+          if (!node.children || node.children.length === 0) {
+            node.children = Object.preventExtensions([`\$\{html(${code})\}`]);
+          } else {
+            node.children[0] = `\$\{html(${code})\}`;
+            node.children.length = 1;
+          }
+
           break;
         }
         case "#with":
@@ -192,9 +202,9 @@ export async function convertNodeToRenderString(node, imports, meta) {
   let renderedElement = "";
 
   const isImportedComponent =
-    meta.componentImports && node.tagName in meta.componentImports;
+    meta.componentImports && tagName in meta.componentImports;
   const isInlineComponent =
-    meta.inlineComponents && node.tagName in meta.inlineComponents;
+    meta.inlineComponents && tagName in meta.inlineComponents;
 
   if (isImportedComponent || isInlineComponent) {
     let propsString = "";
@@ -270,13 +280,13 @@ export async function convertNodeToRenderString(node, imports, meta) {
       stringifiedNamedSlots = "null";
     }
 
-    renderedElement = `\$\{await ${node.tagName}.render({
+    renderedElement = `\$\{await ${tagName}.render({
       props: ${propsString ? `{${propsString}}` : "null"},
       slot: ${defaultSlotString ? `\`${defaultSlotString}\`` : "null"},
       namedSlots: ${stringifiedNamedSlots},
     })\}`;
   } else {
-    const isFragment = node.tagName === "_";
+    const isFragment = tagName === "_";
 
     if (!isFragment) {
       let attributesString = "";
@@ -311,7 +321,7 @@ export async function convertNodeToRenderString(node, imports, meta) {
         }
       }
 
-      renderedElement = `<${node.tagName}${attributesString}>`;
+      renderedElement = `<${tagName}${attributesString}>`;
     }
 
     /** @type {string} */
@@ -365,15 +375,15 @@ export async function convertNodeToRenderString(node, imports, meta) {
     renderedElement += childrenString;
 
     if (!isFragment) {
-      const isVoid = node.tagName in voidTagNames;
+      const isVoid = tagName in voidTagNames;
 
       if (!isVoid || Boolean(childrenString)) {
         if (isVoid) {
           console.warn(
-            `Void tag <${node.tagName}> unexpectedly received child content`
+            `Void tag <${tagName}> unexpectedly received child content`
           );
         }
-        renderedElement += `</${node.tagName}>`;
+        renderedElement += `</${tagName}>`;
       }
     }
   }

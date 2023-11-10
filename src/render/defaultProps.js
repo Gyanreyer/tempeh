@@ -27,9 +27,13 @@ const mergeDefaults = (obj, defaults) => {
  * into the props object. Be aware that this transforms the original props object instead of making a copy
  * for performance purposes.
  *
- * @param {Record<string, any>} props
+ * @param {Record<string, any>|null|undefined} props
  * @param {Record<string, any>} defaultProps
  */
 export function defaultProps(props, defaultProps) {
+  if (!props) {
+    return defaultProps;
+  }
   mergeDefaults(props, defaultProps);
+  return props;
 }

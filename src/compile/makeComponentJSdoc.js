@@ -18,26 +18,26 @@ export function makeComponentJSdoc(typesString) {
 
   if (!propsTypedefRegex.test(typesString)) {
     jsDocString += `
-      /**
-       * @typedef {Record<string, any> | null | undefined} Props
-       */`;
+/**
+ * @typedef {Record<string, any> | null | undefined} Props
+ */`;
   }
 
   if (!namedSlotsTypedefRegex.test(typesString)) {
     jsDocString += `
-      /**
-       * @typedef {Record<string, string> | null | undefined} NamedSlots
-       */`;
+/**
+ * @typedef {Record<string, string> | null | undefined} NamedSlots
+ */`;
   }
 
   if (!paramsDocRegex.test(typesString)) {
     jsDocString += `
-    /**
-     * @param {Object} params
-     * @param {Props} [params.props]
-     * @param {NamedSlots} [params.namedSlots]
-     * @param {string|null} [params.slot]
-     */`;
+/**
+ * @param {Object} params
+ * @param {Props} [params.props]
+ * @param {NamedSlots} [params.namedSlots]
+ * @param {string|null} [params.slot]
+ */`;
   } else {
     jsDocString = jsDocString.trimEnd();
   }
