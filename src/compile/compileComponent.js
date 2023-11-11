@@ -9,6 +9,7 @@ import { gatherComponentMeta } from "./gatherComponentMeta.js";
 import { makeComponentJSdoc } from "./makeComponentJSdoc.js";
 import { convertNodeToRenderString } from "./convertNodeToRenderString.js";
 import { deepPreventExtensions } from "../utils/deepPreventExtensions.js";
+import { stringifyObjectForRender } from "./stringifyObjectForRender.js";
 
 /** @typedef {import("./parseXML.js").TmphNode} TmphNode */
 /** @typedef {import("./gatherComponentMeta.js").Meta} Meta */
@@ -18,8 +19,9 @@ const propsVariableRegex = /\bprops\b/;
 
 /**
  * @param {string} componentPath
+ * @param {boolean} [skipCache=false]
  */
-export async function compileComponent(componentPath) {
+export async function compileComponent(componentPath, skipCache = false) {
   const componentDirectory = path.dirname(componentPath);
   const outputPath = path.resolve(
     componentDirectory,
@@ -36,24 +38,26 @@ export async function compileComponent(componentPath) {
 
   const integrityComment = `// __tmph_integrity=${integrityHash}`;
 
-  try {
-    // Read the first line of the existing compiled component file (if one exists)
-    // and check if it matches the source file's integrity hash. If it does, we can skip re-compiling
-    const inputStream = createReadStream(outputPath);
+  if (!skipCache) {
     try {
-      for await (const line of readline.createInterface(inputStream)) {
-        if (line.startsWith(integrityComment)) {
-          return outputPath;
+      // Read the first line of the existing compiled component file (if one exists)
+      // and check if it matches the source file's integrity hash. If it does, we can skip re-compiling
+      const inputStream = createReadStream(outputPath);
+      try {
+        for await (const line of readline.createInterface(inputStream)) {
+          if (line.startsWith(integrityComment)) {
+            return outputPath;
+          }
+          break;
         }
-        break;
+      } finally {
+        inputStream.close();
       }
-    } finally {
-      inputStream.close();
-    }
-  } catch {}
+    } catch {}
+  }
 
   const rootNodes = await parseXML(componentPath);
-  const meta = deepPreventExtensions(gatherComponentMeta(rootNodes, {}));
+  const meta = deepPreventExtensions(gatherComponentMeta(rootNodes));
 
   /** @type {Record<string, string>} */
   const imports = {};
@@ -136,56 +140,49 @@ export async function compileComponent(componentPath) {
   // Now that all nodes are done rendering, we can combine the root node
   // render strings into a single string
   const renderString = rootNodeRenderStrings.join("\n");
+  meta.usesProps = propsVariableRegex.test(renderString);
+
+  const { jsDocString, defaultProps } = makeComponentJSdoc(meta);
+
+  if (defaultProps) {
+    imports.defaultProps = "#tmph/render/defaultProps.js";
+  }
 
   let importsString = "";
   for (const importMethod in imports) {
     importsString += `import ${importMethod} from "${imports[importMethod]}";\n`;
   }
 
-  const doesRenderStringUseProps = propsVariableRegex.test(renderString);
-
-  const hasDefaultSlot = meta.hasDefaultSlot;
-  const namedSlots = meta.namedSlots;
-
-  const shouldIncludeJSdoc =
-    doesRenderStringUseProps || hasDefaultSlot || namedSlots;
-
   await writeFile(
     outputPath,
     `${integrityComment}
 ${importsString}
 ${inlineComponentsString}
-${
-  shouldIncludeJSdoc
-    ? `
-/**
- * @param {Object} params${
-   doesRenderStringUseProps
-     ? `
- * @param {Props} params.props`
-     : ""
- }
-${
-  hasDefaultSlot
-    ? `
- * @param {string} [params.slot]`
-    : ""
-}${
-        namedSlots
-          ? `
- * @param {{ [key in ${namedSlots.join("|")}]?: string }} [params.namedSlots]`
-          : ""
-      }
- */`
-    : ""
-}
+${jsDocString}
 export async function render(params) {${
       meta.hasDefaultSlot ? 'const slot = params.slot ?? "";\n' : ""
     }${
       meta.hasDefaultSlot ? "const namedSlots = params.namedSlots ?? {};\n" : ""
-    }
-  const props = params.props;
+    }${
+      defaultProps
+        ? `const props = defaultProps(params.props, ${(() => {
+            let defaultPropsObjectString = "{";
+            for (const key in defaultProps) {
+              if (typeof defaultProps[key] === "object") {
+                defaultPropsObjectString += `"${key}": ${stringifyObjectForRender(
+                  defaultProps[key]
+                )},`;
+                continue;
+              }
+              const value = defaultProps[key];
+              defaultPropsObjectString += `"${key}": ${value},`;
+            }
+            defaultPropsObjectString += "}";
 
+            return defaultPropsObjectString;
+          })()});\n`
+        : "const props = params.props;\n"
+    }
   return \`${renderString}\`;
 }`
   );

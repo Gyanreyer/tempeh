@@ -12,15 +12,21 @@ import { getNodeAttributeValue } from "./getNodeAttributeValue.js";
  *  jsDoc?: string;
  *  hasDefaultSlot?: boolean;
  *  namedSlots?: string[];
+ *  usesProps: boolean;
  * }} Meta
  */
 
 /**
  *
  * @param {Array<TmphNode|string>} nodeList
- * @param {Meta} meta
+ * @param {Meta} [meta]
  */
-export function gatherComponentMeta(nodeList, meta) {
+export function gatherComponentMeta(
+  nodeList,
+  meta = {
+    usesProps: false,
+  }
+) {
   let i = 0;
   let childCount = nodeList.length;
 

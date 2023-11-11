@@ -3,6 +3,7 @@ import md from "../render/md.js";
 import { processExpressionString } from "./parseExpressionString.js";
 import { getRandomString } from "../utils/getRandomString.js";
 import { getNodeAttributeValue } from "./getNodeAttributeValue.js";
+import { stringifyObjectForRender } from "./stringifyObjectForRender.js";
 
 /** @typedef {import("./parseXML.js").TmphNode} TmphNode */
 /** @typedef {import("./gatherComponentMeta.js").Meta} Meta */
@@ -281,11 +282,30 @@ export async function convertNodeToRenderString(node, imports, meta) {
       stringifiedNamedSlots = "null";
     }
 
-    renderedElement = `\$\{await ${tagName}.render({
-      props: ${propsString ? `{${propsString}}` : "null"},
-      slot: ${defaultSlotString ? `\`${defaultSlotString}\`` : "null"},
-      namedSlots: ${stringifiedNamedSlots},
-    })\}`;
+    /**
+     * @type {{
+     *  props?: string;
+     *  slot?: string;
+     *  namedSlots?: string;
+     * }}
+     */
+    const renderParams = {};
+
+    if (propsString) {
+      renderParams.props = `{${propsString}}`;
+    }
+
+    if (defaultSlotString) {
+      renderParams.slot = `\`${defaultSlotString}\``;
+    }
+
+    if (namedSlots) {
+      renderParams.namedSlots = stringifiedNamedSlots;
+    }
+
+    renderedElement = `\$\{await ${tagName}.render(${stringifyObjectForRender(
+      renderParams
+    )})\}`;
   } else {
     const isFragment = tagName === "_";
 

@@ -1,46 +1,97 @@
-const propsTypedefRegex = /\/\*\*\s+\**\s*@typedef\s*\{.+\}\s*Props[\s\*]*/;
+const propsTypedefCommentBlockRegex =
+  /\/\*\*\s+\**\s*(@typedef\s*\{.+\}\s*[Pp]rops)(.|\n)*?(?:@typedef|\*\/)/g;
 
-const namedSlotsTypedefRegex =
-  /\/\*\*\s+\**\s*@typedef\s*\{.+\}\s*NamedSlots[\s\*]*/;
+const requiredPropertyRegex =
+  /\@prop(?:erty)?\s*\{(?:.|\n)*\}\s*(?<name>[^\[]+?\b)/g;
 
-// Regex matching the final jsdoc block for the component's render function
-const paramsDocRegex =
-  /\/\*\*\s+\**\s*@param\s*\{.+\}\s*params[\s\*]*.*\*\/\s*$/;
+const optionalPropertyRegex =
+  /@prop(?:erty)?\s*\{(?:.|\n)*\}\s*\[\s*(?<name>[^=]+)\s*=?\s*(?<defaultValue>.*)\s*\]/g;
 
 /**
  * Takes the string of types from a component's <script #types> tag and
  * fills in any missing jsdoc blocks for the component's render function's types.
  *
- * @param {string} typesString
+ * @param {import("./gatherComponentMeta").Meta} meta
  */
-export function makeComponentJSdoc(typesString) {
-  let jsDocString = typesString;
+export function makeComponentJSdoc(meta) {
+  const usesProps = meta.usesProps;
+  const hasDefaultSlot = meta.hasDefaultSlot;
+  const namedSlots = meta.namedSlots;
 
-  if (!propsTypedefRegex.test(typesString)) {
+  let jsDocString = meta.jsDoc || "";
+
+  if (!usesProps && !hasDefaultSlot && !namedSlots) {
+    return { jsDocString, defaultProps: null };
+  }
+
+  let hasRequiredProps = false;
+
+  /** @type {Record<string, any> | null} */
+  let defaultProps = null;
+
+  const propsTypedefCommentBlockMatch = jsDocString.match(
+    propsTypedefCommentBlockRegex
+  );
+
+  if (propsTypedefCommentBlockMatch) {
+    const commentBlockString = propsTypedefCommentBlockMatch[0];
+
+    hasRequiredProps = requiredPropertyRegex.test(commentBlockString);
+
+    let match;
+    while ((match = optionalPropertyRegex.exec(commentBlockString))) {
+      defaultProps ??= {};
+
+      const name = match.groups?.name;
+      const defaultValue = match.groups?.defaultValue?.trim();
+      if (name) {
+        const splitNameParts = name.split(".");
+
+        let previousPartObject = defaultProps;
+        for (let i = 0, partCount = splitNameParts.length; i < partCount; ++i) {
+          const partName = splitNameParts[i];
+
+          if (i < partCount - 1) {
+            previousPartObject = previousPartObject[partName] ??= {};
+          } else {
+            previousPartObject[partName] = defaultValue || null;
+          }
+        }
+      }
+    }
+  } else {
     jsDocString += `
 /**
  * @typedef {Record<string, any> | null | undefined} Props
  */`;
   }
 
-  if (!namedSlotsTypedefRegex.test(typesString)) {
-    jsDocString += `
+  jsDocString += `
 /**
- * @typedef {Record<string, string> | null | undefined} NamedSlots
- */`;
+ * @param {Object} ${hasRequiredProps ? "params" : "[params]"}`;
+
+  if (usesProps) {
+    jsDocString += `
+ * @param {Props} ${hasRequiredProps ? "params.props" : "[params.props]"}`;
   }
 
-  if (!paramsDocRegex.test(typesString)) {
+  if (hasDefaultSlot) {
     jsDocString += `
-/**
- * @param {Object} params
- * @param {Props} [params.props]
- * @param {NamedSlots} [params.namedSlots]
- * @param {string|null} [params.slot]
- */`;
-  } else {
-    jsDocString = jsDocString.trimEnd();
+ * @param {string|null} [params.slot=""]`;
   }
 
-  return jsDocString;
+  if (namedSlots) {
+    jsDocString += `
+ * @param {{ [key in ${namedSlots.join(
+   "|"
+ )}]?: string }} [params.namedSlots=""]`;
+  }
+
+  jsDocString += `
+*/`;
+
+  return {
+    jsDocString,
+    defaultProps,
+  };
 }

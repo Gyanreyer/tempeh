@@ -20,6 +20,7 @@ const mergeDefaults = (obj, defaults) => {
       mergeDefaults(obj[key], defaults[key]);
     }
   }
+  return obj;
 };
 
 /**
@@ -30,10 +31,9 @@ const mergeDefaults = (obj, defaults) => {
  * @param {Record<string, any>|null|undefined} props
  * @param {Record<string, any>} defaultProps
  */
-export function defaultProps(props, defaultProps) {
+export default function defaultProps(props, defaultProps) {
   if (!props) {
     return defaultProps;
   }
-  mergeDefaults(props, defaultProps);
-  return props;
+  return mergeDefaults(structuredClone(props), defaultProps);
 }
