@@ -1,6 +1,7 @@
 import { spawn } from "node:child_process";
 
 import { deepPreventExtensions } from "../utils/deepPreventExtensions.js";
+import { resolveRelativePath } from "../utils/resolveRelativePath.js";
 
 /**
  * @typedef {Object} TmphNode
@@ -13,20 +14,16 @@ import { deepPreventExtensions } from "../utils/deepPreventExtensions.js";
  * @typedef {Array<TmphNode | string>} RootNodeArray
  */
 
-const parserBinaryPath = import.meta
-  .resolve("../../bin/parse-xml")
-  .replace("file://", "");
-
-// Creating a re-usable array to avoid unnecessary garbage collection
-// for the arguments we'll be passing when spawning the parser process.
-const parserProcessArgs = new Array(2);
-parserProcessArgs[0] = "--file";
+const parserBinaryPath = resolveRelativePath(
+  "../../bin/parse-xml",
+  import.meta
+);
 
 /**
  * Takes the path to a .tmph.html file and parses it into an array of TmphNodes
- * @param {string} path
+ * @param {Buffer} fileBuffer
  */
-export async function parseXML(path) {
+export async function parseXML(fileBuffer) {
   // Prevent extension on all items in the node tree. This means that items can be deleted
   // or modified, but never added. This should hopefully reduce memory usage.
   return deepPreventExtensions(
@@ -40,12 +37,12 @@ export async function parseXML(path) {
         const bufferArray = new Array(2);
         bufferArray[0] = Buffer.from("", "utf8");
 
-        parserProcessArgs[1] = path;
+        // parserProcessArgs[1] = path;
         // Spawn a process to run the parser binary
         // The binary will read the file at the path passed in,
         // parse it, and stream the result to stdout as a JSON string
         // array of TmphNodes objects and strings at the root of the document.
-        const process = spawn(parserBinaryPath, parserProcessArgs);
+        const process = spawn(parserBinaryPath);
 
         process.on("error", reject);
 
@@ -60,6 +57,11 @@ export async function parseXML(path) {
         process.stdout.on("end", () => {
           resolve(JSON.parse(bufferArray[0].toString("utf-8")));
         });
+
+        // Write the file buffer to stdin and the parser will start
+        // processing it
+        process.stdin.write(fileBuffer);
+        process.stdin.end();
       })
     )
   );

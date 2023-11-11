@@ -1,4 +1,4 @@
-import { writeFile, readFile, access } from "node:fs/promises";
+import { writeFile, readFile } from "node:fs/promises";
 import path from "node:path";
 import { createHash } from "node:crypto";
 import { createReadStream } from "node:fs";
@@ -31,9 +31,9 @@ export async function compileComponent(componentPath, skipCache = false) {
   // Create a hash of the source component file contents which we will embed in
   // the compiled component file. This will allow us to check if the source component
   // file has changed and needs to be re-compiled
-  const componentFileContents = await readFile(componentPath);
+  const componentFileBuffer = await readFile(componentPath);
   const integrityHash = createHash("sha256")
-    .update(componentFileContents)
+    .update(componentFileBuffer)
     .digest("hex");
 
   const integrityComment = `// __tmph_integrity=${integrityHash}`;
@@ -56,7 +56,7 @@ export async function compileComponent(componentPath, skipCache = false) {
     } catch {}
   }
 
-  const rootNodes = await parseXML(componentPath);
+  const rootNodes = await parseXML(componentFileBuffer);
   const meta = deepPreventExtensions(gatherComponentMeta(rootNodes));
 
   /** @type {Record<string, string>} */

@@ -2,7 +2,7 @@ package main
 
 import (
 	"encoding/json"
-	"flag"
+	"io"
 	"os"
 )
 
@@ -22,27 +22,20 @@ func getCurrentNode(nodeTree []*TmphNode) *TmphNode {
 }
 
 func main() {
-	filePath := flag.String("file", "", "Path to XML file to parse")
-	flag.Parse()
-
-	if *filePath == "" {
-		panic("No file path provided")
-	}
-
-	fileBytes, err := os.ReadFile(*filePath)
+	// Read in the file to parse from stdin
+	fileBytes, err := io.ReadAll(os.Stdin)
 	if err != nil {
 		panic(err)
 	}
-
-	os.Stdout.Write([]byte{'['})
-
-	isFirstNode := true
 
 	fileStr := string(fileBytes)
 
 	cursor := Cursor{index: 0, str: fileStr, maxIndex: len(fileStr) - 1}
 
 	nodeTree := make([]*TmphNode, 0)
+	isFirstNode := true
+
+	os.Stdout.Write([]byte{'['})
 
 	for cursor.index < cursor.maxIndex {
 		currentNode := getCurrentNode(nodeTree)

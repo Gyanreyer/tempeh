@@ -1,7 +1,7 @@
 import { test, describe } from "node:test";
 import * as assert from "node:assert";
 
-import { css } from "./css.js";
+import css from "./css.js";
 
 describe("css", () => {
   test("should scope CSS as expected", () => {
