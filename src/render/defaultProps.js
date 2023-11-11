@@ -28,12 +28,13 @@ const mergeDefaults = (obj, defaults) => {
  * into the props object. Be aware that this transforms the original props object instead of making a copy
  * for performance purposes.
  *
- * @param {Record<string, any>|null|undefined} props
- * @param {Record<string, any>} defaultProps
+ * @template {Record<string, any>} TProps
+ * @param {TProps|null|undefined} props
+ * @param {Partial<TProps>} defaultProps
+ * @returns {TProps}
  */
 export default function defaultProps(props, defaultProps) {
-  if (!props) {
-    return defaultProps;
-  }
-  return mergeDefaults(structuredClone(props), defaultProps);
+  return /** @type {TProps} */ (
+    mergeDefaults(props ? structuredClone(props) : {}, defaultProps)
+  );
 }

@@ -12,10 +12,9 @@ import renderAttributeToString from "#tmph/render/renderAttributes.js";
  * @param {string|null} [params.slot=""]
  * @param {{ [key in icon]?: string }} [params.namedSlots=""]
 */
-export async function render(params) {const slot = params.slot ?? "";
-const namedSlots = params.namedSlots ?? {};
-
-  const props = params.props;
+export async function render(params) {const slot = params?.slot ?? "";
+const namedSlots = params?.namedSlots ?? {};
+const props = params?.props ?? {};
 
   return `<a${await renderAttributeToString(
             "href",

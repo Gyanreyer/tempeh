@@ -2,10 +2,10 @@ const propsTypedefCommentBlockRegex =
   /\/\*\*\s+\**\s*(@typedef\s*\{.+\}\s*[Pp]rops)(.|\n)*?(?:@typedef|\*\/)/g;
 
 const requiredPropertyRegex =
-  /\@prop(?:erty)?\s*\{(?:.|\n)*\}\s*(?<name>[^\[]+?\b)/g;
+  /\@prop(?:erty)?\s*\{(?:.|\n)*?\}\s*(?<name>[^\[]+?\b)/g;
 
 const optionalPropertyRegex =
-  /@prop(?:erty)?\s*\{(?:.|\n)*\}\s*\[\s*(?<name>[^=]+)\s*=?\s*(?<defaultValue>.*)\s*\]/g;
+  /@prop(?:erty)?\s*\{(?:.|\n)*?\}\s*\[\s*(?<name>[^=]+)\s*=?\s*(?<defaultValue>.*)\s*\]/g;
 
 /**
  * Takes the string of types from a component's <script #types> tag and
@@ -52,7 +52,11 @@ export function makeComponentJSdoc(meta) {
           const partName = splitNameParts[i];
 
           if (i < partCount - 1) {
-            previousPartObject = previousPartObject[partName] ??= {};
+            const partObject = previousPartObject[partName];
+            if (typeof partObject !== "object" || partObject === null) {
+              previousPartObject[partName] = {};
+            }
+            previousPartObject = previousPartObject[partName];
           } else {
             previousPartObject[partName] = defaultValue || null;
           }

@@ -160,12 +160,14 @@ ${importsString}
 ${inlineComponentsString}
 ${jsDocString}
 export async function render(params) {${
-      meta.hasDefaultSlot ? 'const slot = params.slot ?? "";\n' : ""
+      meta.hasDefaultSlot ? 'const slot = params?.slot ?? "";\n' : ""
     }${
-      meta.hasDefaultSlot ? "const namedSlots = params.namedSlots ?? {};\n" : ""
+      meta.hasDefaultSlot
+        ? "const namedSlots = params?.namedSlots ?? {};\n"
+        : ""
     }${
       defaultProps
-        ? `const props = defaultProps(params.props, ${(() => {
+        ? `const props = defaultProps(params?.props, ${(() => {
             let defaultPropsObjectString = "{";
             for (const key in defaultProps) {
               if (typeof defaultProps[key] === "object") {
@@ -181,7 +183,7 @@ export async function render(params) {${
 
             return defaultPropsObjectString;
           })()});\n`
-        : "const props = params.props;\n"
+        : "const props = params?.props ?? {};\n"
     }
   return \`${renderString}\`;
 }`
