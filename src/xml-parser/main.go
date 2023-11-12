@@ -22,8 +22,18 @@ func getCurrentNode(nodeTree []*TmphNode) *TmphNode {
 }
 
 func main() {
-	// Read in the file to parse from stdin
-	fileBytes, err := io.ReadAll(os.Stdin)
+	var fileBytes []byte
+	var err error
+
+	if len(os.Args) > 1 {
+		// If a file path arg was provided, read in the file to parse
+		filePath := os.Args[1]
+		fileBytes, err = os.ReadFile(filePath)
+	} else {
+		// If no file path Read in the buffer of the file we want to parse from stdin
+		fileBytes, err = io.ReadAll(os.Stdin)
+	}
+
 	if err != nil {
 		panic(err)
 	}
@@ -52,7 +62,12 @@ func main() {
 			visitNodeIndex--
 		}
 
-		textContent, isClosingTag := cursor.ReadUntilTag(shouldPreserveWhitespace)
+		childIndex := 0
+		if currentNode != nil && currentNode.Children != nil {
+			childIndex = len(currentNode.Children)
+		}
+
+		textContent, isClosingTag := cursor.ReadUntilTag(shouldPreserveWhitespace, childIndex)
 		if textContent != "" {
 			if currentNode == nil {
 				stringifiedNode, err := json.Marshal(textContent)
@@ -141,7 +156,7 @@ func main() {
 				}
 			} else {
 				if openedTagName == "script" || openedTagName == "style" {
-					elementTextContent := cursor.ReadToMatchingClosingTag(openedTagName, false)
+					elementTextContent := cursor.ReadRawTagTextContent(openedTagName, false)
 					if elementTextContent != "" {
 						newNode.Children = append(newNode.Children, elementTextContent)
 

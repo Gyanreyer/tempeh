@@ -14,7 +14,7 @@ func isWhiteSpace(char rune) bool {
 
 // There are more strict rules for the first character in a tag name; it must be a letter
 func isLegalLeadingTagNameChar(char rune) bool {
-	return (char >= 'a' && char <= 'z') || (char >= 'A' && char <= 'Z')
+	return (char >= 'a' && char <= 'z') || (char >= 'A' && char <= 'Z') || char == ':' || char == '_'
 }
 
 func isEndOfTagChar(char rune) bool {
@@ -31,6 +31,58 @@ func isLegalTagOrAttributeNameChar(char rune) bool {
 
 func isLegalUnquotedAttributeValueChar(char rune) bool {
 	return !isWhiteSpace(char) && !isAttributeValueQuoteChar(char) && !isEndOfTagChar(char) && char != '<'
+}
+
+func flattenWhiteSpace(str string, shouldFlattenIntermediateSpace bool, shouldStripLeadingSpace bool, shouldStripTrailingSpace bool) string {
+	index := 0
+	strLen := len(str)
+
+	for index < strLen {
+		if !isWhiteSpace(rune(str[index])) {
+			// Skip over non-whitespace characters
+			index++
+			continue
+		}
+
+		// We hit whitespace! Let's keep going until we hit the end of this group of whitespace and then figure out how to flatten it
+		whiteSpaceGroupStartIndex := index
+		index++
+
+		for index < strLen && isWhiteSpace(rune(str[index])) {
+			index++
+		}
+		whiteSpaceGroupEndIndex := index
+
+		isLeading := whiteSpaceGroupStartIndex == 0
+		isTrailing := whiteSpaceGroupEndIndex >= strLen
+
+		shouldStripSpace := (isLeading && shouldStripLeadingSpace) || (isTrailing && shouldStripTrailingSpace)
+
+		if isLeading {
+			str = str[whiteSpaceGroupEndIndex:]
+			index = 1
+			if !shouldStripSpace {
+				str = " " + str
+				index++
+			}
+		} else if isTrailing {
+			str = str[:whiteSpaceGroupStartIndex]
+			if !shouldStripSpace {
+				str = str + " "
+			}
+			index = len(str)
+		} else if shouldFlattenIntermediateSpace {
+			beforeWhiteSpace := str[:whiteSpaceGroupStartIndex]
+			afterWhiteSpace := str[whiteSpaceGroupEndIndex:]
+			// All other whitespace should be flattened to a single space
+			str = beforeWhiteSpace + " " + afterWhiteSpace
+			index = whiteSpaceGroupStartIndex + 1
+		}
+
+		strLen = len(str)
+	}
+
+	return str
 }
 
 type Cursor struct {
@@ -155,15 +207,7 @@ func (c *Cursor) SkipComment() {
 	c.AdvanceChar(3)
 }
 
-func (c *Cursor) ReadUntilTag(shouldPreserveWhitespace bool) (string, bool) {
-	if !shouldPreserveWhitespace {
-		_, err := c.SkipWhiteSpace()
-
-		if err != nil {
-			return "", false
-		}
-	}
-
+func (c *Cursor) ReadUntilTag(shouldPreserveWhiteSpace bool, childIndex int) (string, bool) {
 	textStartIndex := c.index
 
 	isClosingTag := false
@@ -191,14 +235,21 @@ func (c *Cursor) ReadUntilTag(shouldPreserveWhitespace bool) (string, bool) {
 	}
 
 	textEndIndex := c.index
-	trailingChar, err := c.At(textEndIndex - 1)
 
-	for !isClosingTag && !shouldPreserveWhitespace && textEndIndex > textStartIndex && err == nil && isWhiteSpace(trailingChar) {
-		textEndIndex--
-		trailingChar, err = c.At(textEndIndex - 1)
+	textContent := c.str[textStartIndex:textEndIndex]
+
+	if !shouldPreserveWhiteSpace {
+		textContent = flattenWhiteSpace(
+			textContent,
+			true,
+			// If this is the first child of an element, strip leading whitespace
+			childIndex == 0,
+			// If we just encountered a closing tag, meaning this is the last child of an element, strip trailing whitespace
+			isClosingTag,
+		)
 	}
 
-	return c.str[textStartIndex:textEndIndex], isClosingTag
+	return textContent, isClosingTag
 }
 
 func (c *Cursor) ReadTagName() string {
@@ -375,7 +426,8 @@ func (c *Cursor) ReadClosingTag() string {
 	return tagName
 }
 
-func (c *Cursor) ReadToMatchingClosingTag(tagName string, shouldPreserveWhitespace bool) string {
+// Reads the content of a tag as a string without parsing it
+func (c *Cursor) ReadRawTagTextContent(tagName string, shouldPreserveWhitespace bool) string {
 	if !shouldPreserveWhitespace {
 		c.SkipWhiteSpace()
 	}
@@ -403,12 +455,16 @@ func (c *Cursor) ReadToMatchingClosingTag(tagName string, shouldPreserveWhitespa
 		contentEndIndex = c.index
 	}
 
-	trailingChar, err := c.At(contentEndIndex - 1)
+	textContent := c.str[contentStartIndex:contentEndIndex]
 
-	for !shouldPreserveWhitespace && contentEndIndex > contentStartIndex && err == nil && isWhiteSpace(trailingChar) {
-		contentEndIndex--
-		trailingChar, err = c.At(contentEndIndex - 1)
+	if !shouldPreserveWhitespace {
+		textContent = flattenWhiteSpace(textContent,
+			// Only strip leading and trailing whitespace
+			false,
+			true,
+			true,
+		)
 	}
 
-	return c.str[contentStartIndex:contentEndIndex]
+	return textContent
 }

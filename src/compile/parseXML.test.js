@@ -18,7 +18,7 @@ describe("parseXML", () => {
 
     assert.deepStrictEqual(rootNodes, [
       { tagName: "div", attributes: null, children: ["Hello, world!"] },
-      "Some root-level text",
+      "Some root-level text ",
       {
         tagName: "button",
         attributes: [
@@ -32,7 +32,7 @@ describe("parseXML", () => {
           "My custom label",
         ],
         children: [
-          "Click me",
+          "Click me ",
           {
             tagName: "svg",
             attributes: [
@@ -51,6 +51,18 @@ describe("parseXML", () => {
               },
             ],
           },
+        ],
+      },
+      {
+        tagName: "p",
+        attributes: null,
+        children: [
+          "Spaces should ",
+          { tagName: "_", attributes: null, children: ["be"] },
+          " ",
+          { tagName: "em", attributes: null, children: ["preserved"] },
+          " ",
+          { tagName: "strong", attributes: null, children: ["but flattened"] },
         ],
       },
     ]);
