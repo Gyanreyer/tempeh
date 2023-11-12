@@ -85,10 +85,15 @@ export function makeComponentJSdoc(meta) {
   }
 
   if (namedSlots) {
+    let slotNamesUnionString = "";
+    for (let i = 0, slotCount = namedSlots.length; i < slotCount; ++i) {
+      slotNamesUnionString += `"${namedSlots[i]}"${
+        i < slotCount - 1 ? "|" : ""
+      }`;
+    }
+
     jsDocString += `
- * @param {{ [key in ${namedSlots.join(
-   "|"
- )}]?: string }} [params.namedSlots=""]`;
+ * @param {{ [key in ${slotNamesUnionString}]?: string }} [params.namedSlots=""]`;
   }
 
   jsDocString += `

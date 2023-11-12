@@ -15,4 +15,11 @@
   <div #if="props.showForm">
     <form :...="props.formProps"></form>
   </div>
+  <div>
+    <p>The temperature in Detroit is <_
+      #with:forecast="await fetch('https://api.weather.gov/gridpoints/DTX/66,34/forecast').then((res)=>res.json())"
+      #text="forecast.properties.periods[0].temperature"
+    ></_>
+  </p>
+  </div>
 </Layout>

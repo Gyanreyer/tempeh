@@ -9,25 +9,15 @@ const escapeAttribute = (attributeValue) => {
 /** @typedef {string|boolean|null|undefined} AttributeValue */
 
 /**
+ * Takes an attribute name and value and returns a string representing how that
+ * attribute should be rendered in HTML
  *
  * @param {string} attributeName
- * @param {AttributeValue|(()=>(AttributeValue | Promise<AttributeValue>))} attributeValueOrGetter
+ * @param {AttributeValue} attributeValue
  */
-export default async function renderAttributeToString(
-  attributeName,
-  attributeValueOrGetter
-) {
+export default function renderHTMLAttribute(attributeName, attributeValue) {
   if (!attributeName) {
     return "";
-  }
-
-  let attributeValue =
-    typeof attributeValueOrGetter === "function"
-      ? attributeValueOrGetter()
-      : attributeValueOrGetter;
-
-  if (attributeValue instanceof Promise) {
-    attributeValue = await attributeValue;
   }
 
   if (

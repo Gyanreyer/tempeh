@@ -30,8 +30,25 @@ const replaceEscapedChar = (matchChar) =>
  * @param {unknown} text
  */
 export default function escapeText(text) {
-  if (typeof text !== "string") {
-    return "";
+  switch (typeof text) {
+    case "string":
+      return text.replace(escapedCharRegex, replaceEscapedChar);
+    case "boolean":
+    case "number":
+    case "bigint":
+      // Numbers and booleans can safely be directly converted to strings
+      return String(text);
+    case "object":
+      if (text === null) {
+        return "";
+      }
+      // Omit objects, functions, and symbols to avoid unintentionally leaking information to the client
+      return "__OBJECT OMITTED__";
+    case "function":
+      return "__FUNCTION OMITTED__";
+    case "symbol":
+      return "__SYMBOL OMITTED__";
+    default:
+      return "";
   }
-  return text.replace(escapedCharRegex, replaceEscapedChar);
 }

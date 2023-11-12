@@ -1,6 +1,8 @@
 // Regex matches the last line of a JavaScript expression
 const lastLineOfExpressionRegex = /;?(.+)[;\s]?$/;
 
+const asyncExpressionRegex = /\b(async|await|Promise)\b/;
+
 /**
  * @param {unknown} expressionString
  */
@@ -22,10 +24,15 @@ export function processExpressionString(expressionString) {
     .slice(0, lastLineOfExpressionMatch.index)
     .trim();
 
-  return setupExpressionLines
-    ? `(()=>{
+  const isAsync = asyncExpressionRegex.test(expressionString);
+
+  return {
+    expressionCode: setupExpressionLines
+      ? `${isAsync ? "await (async " : "("}()=>{
     ${setupExpressionLines}
     return ${lastExpressionLine}
   })()`
-    : lastExpressionLine;
+      : lastExpressionLine,
+    isAsync,
+  };
 }

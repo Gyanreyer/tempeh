@@ -5,7 +5,11 @@ import { createReadStream } from "node:fs";
 import readline from "node:readline/promises";
 
 import { parseXML } from "./parseXML.js";
-import { gatherComponentMeta } from "./gatherComponentMeta.js";
+import {
+  gatherComponentMeta,
+  cachedMetaCommentStart,
+  makeCachedMetaComment,
+} from "./gatherComponentMeta.js";
 import { makeComponentJSdoc } from "./makeComponentJSdoc.js";
 import { convertNodeToRenderString } from "./convertNodeToRenderString.js";
 import { deepPreventExtensions } from "../utils/deepPreventExtensions.js";
@@ -17,9 +21,12 @@ import { stringifyObjectForRender } from "./stringifyObjectForRender.js";
 // Regex to match whether the render string references a props variable
 const propsVariableRegex = /\bprops\b/;
 
+const integrityCommentStart = "// __tmph_integrity=";
+
 /**
  * @param {string} componentPath
  * @param {boolean} [skipCache=false]
+ * @returns {Promise<{ outputPath: string; meta: Meta; }>}
  */
 export async function compileComponent(componentPath, skipCache = false) {
   const componentDirectory = path.dirname(componentPath);
@@ -36,19 +43,37 @@ export async function compileComponent(componentPath, skipCache = false) {
     .update(componentFileBuffer)
     .digest("hex");
 
-  const integrityComment = `// __tmph_integrity=${integrityHash}`;
+  const integrityComment = `${integrityCommentStart}${integrityHash}`;
 
   if (!skipCache) {
     try {
       // Read the first line of the existing compiled component file (if one exists)
       // and check if it matches the source file's integrity hash. If it does, we can skip re-compiling
       const inputStream = createReadStream(outputPath);
+      const readlineInterface = readline.createInterface(inputStream);
       try {
-        for await (const line of readline.createInterface(inputStream)) {
-          if (line.startsWith(integrityComment)) {
-            return outputPath;
+        const firstLine = await readlineInterface[
+          Symbol.asyncIterator
+        ]().next();
+        if (!firstLine.done && firstLine.value.startsWith(integrityComment)) {
+          const secondLine = await readlineInterface[
+            Symbol.asyncIterator
+          ]().next();
+          if (
+            !secondLine.done &&
+            secondLine.value.startsWith(cachedMetaCommentStart)
+          ) {
+            try {
+              const meta = JSON.parse(
+                secondLine.value.slice(cachedMetaCommentStart.length)
+              );
+              return { outputPath, meta };
+            } catch {
+              console.warn(
+                `Failed to parse metadata from ${outputPath}. Re-compiling...`
+              );
+            }
           }
-          break;
         }
       } finally {
         inputStream.close();
@@ -57,24 +82,36 @@ export async function compileComponent(componentPath, skipCache = false) {
   }
 
   const rootNodes = await parseXML(componentFileBuffer);
-  const meta = deepPreventExtensions(gatherComponentMeta(rootNodes));
+  const meta = deepPreventExtensions(
+    gatherComponentMeta(rootNodes, {
+      sourceFilePath: componentPath,
+      usesProps: false,
+      isAsync: false,
+      hasDefaultSlot: false,
+      namedSlots: null,
+    })
+  );
 
   /** @type {Record<string, string>} */
   const imports = {};
 
   if (meta.componentImports) {
+    const componentImports = meta.componentImports;
     const resolveComponentImportPromises = [];
 
-    for (const componentName in meta.componentImports) {
+    for (const componentName in componentImports) {
       const filePath = path.resolve(
         componentDirectory,
-        meta.componentImports[componentName]
+        componentImports[componentName].importPath
       );
 
       resolveComponentImportPromises.push(
-        compileComponent(filePath).then((path) => {
-          imports[`* as ${componentName}`] = path;
-        })
+        compileComponent(filePath, skipCache).then(
+          ({ outputPath, meta: componentMeta }) => {
+            imports[`* as ${componentName}`] = outputPath;
+            componentImports[componentName].meta = componentMeta;
+          }
+        )
       );
     }
 
@@ -103,10 +140,17 @@ export async function compileComponent(componentPath, skipCache = false) {
   let inlineComponentsString = "";
 
   if (meta.inlineComponents) {
-    for (const componentName in meta.inlineComponents) {
+    const inlineComponents = meta.inlineComponents;
+
+    for (const componentName in inlineComponents) {
+      const inlineComponentMeta = {
+        ...meta,
+        ...inlineComponents[componentName].meta,
+      };
+
       const componentNodeRenderPromises = [];
 
-      const componentNodes = meta.inlineComponents[componentName];
+      const componentNodes = inlineComponents[componentName].nodes;
       const componentNodeCount = componentNodes.length;
       const componentNodeRenderStrings = new Array(componentNodeCount);
 
@@ -117,7 +161,7 @@ export async function compileComponent(componentPath, skipCache = false) {
           continue;
         } else {
           componentNodeRenderPromises.push(
-            convertNodeToRenderString(node, imports, meta).then(
+            convertNodeToRenderString(node, imports, inlineComponentMeta).then(
               (renderString) => (componentNodeRenderStrings[i] = renderString)
             )
           );
@@ -156,15 +200,14 @@ export async function compileComponent(componentPath, skipCache = false) {
   await writeFile(
     outputPath,
     `${integrityComment}
+${makeCachedMetaComment(meta)}
 ${importsString}
 ${inlineComponentsString}
 ${jsDocString}
-export async function render(params) {${
+export ${meta.isAsync ? " async " : " "}function render(params) {${
       meta.hasDefaultSlot ? 'const slot = params?.slot ?? "";\n' : ""
     }${
-      meta.hasDefaultSlot
-        ? "const namedSlots = params?.namedSlots ?? {};\n"
-        : ""
+      meta.namedSlots ? "const namedSlots = params?.namedSlots ?? {};\n" : ""
     }${
       defaultProps
         ? `const props = defaultProps(params?.props, ${(() => {
@@ -189,5 +232,8 @@ export async function render(params) {${
 }`
   );
 
-  return outputPath;
+  return {
+    outputPath,
+    meta,
+  };
 }

@@ -1,9 +1,9 @@
-import renderAttributeToString from "../render/renderAttributes.js";
+import renderHTMLAttribute from "../render/renderAttributes.js";
 import md from "../render/md.js";
-import { processExpressionString } from "./parseExpressionString.js";
 import { getRandomString } from "../utils/getRandomString.js";
 import { getNodeAttributeValue } from "./getNodeAttributeValue.js";
 import { stringifyObjectForRender } from "./stringifyObjectForRender.js";
+import { makeDynamicRenderStringContent } from "./makeDynamicRenderStringContent.js";
 
 /** @typedef {import("./parseXML.js").TmphNode} TmphNode */
 /** @typedef {import("./gatherComponentMeta.js").Meta} Meta */
@@ -51,7 +51,7 @@ export async function convertNodeToRenderString(node, imports, meta) {
   /** @type {Record<string, string|true> | null} */
   let staticAttributes = null;
 
-  /** @type {Record<string, string|true> | null} */
+  /** @type {Record<string, string> | null} */
   let dynamicAttributes = null;
 
   if (node.attributes) {
@@ -99,8 +99,18 @@ export async function convertNodeToRenderString(node, imports, meta) {
            * If the expression evaluates to a falsey value, the default tag name will be used.
            * If the expression evaluates to a non-string value, the default tag name will be used.
            */
-          const code = processExpressionString(attributeValue);
-          tagName = `\$\{${code} ?? "${tagName}"\}`;
+          if (typeof attributeValue !== "string") {
+            console.warn(
+              `${meta.sourceFilePath}: Received #tagname attribute without a tag name expression.`
+            );
+            break;
+          }
+
+          const { expressionCode, isAsync } =
+            makeDynamicRenderStringContent(attributeValue);
+          meta.isAsync = meta.isAsync || isAsync;
+
+          tagName = `\$\{${expressionCode} ?? "${tagName}"\}`;
           break;
         }
         case "#attr": {
@@ -109,9 +119,19 @@ export async function convertNodeToRenderString(node, imports, meta) {
            * attributeModifier is the attribute name
            * attributeValue is the expression which should be evaluated to the attribute's value
            */
-          const code = processExpressionString(attributeValue);
+          if (typeof attributeValue !== "string") {
+            // If the attribute doesn't have a value, just set it as a static boolean attribute
+            staticAttributes ??= {};
+            staticAttributes[attributeModifier] = true;
+            console.warn(
+              `${meta.sourceFilePath}: Received #attr:${attributeModifier} without an attribute value expression.`
+            );
+            break;
+          }
 
-          imports.renderAttributeToString = "#tmph/render/renderAttributes.js";
+          const { expressionCode, isAsync } =
+            makeDynamicRenderStringContent(attributeValue);
+          meta.isAsync = meta.isAsync || isAsync;
 
           dynamicAttributes ??= {};
 
@@ -119,8 +139,8 @@ export async function convertNodeToRenderString(node, imports, meta) {
           // and we should spread the object's properties into the element's attributes
           if (attributeModifier === "...") {
             const resultVariableName = `__tmph_result_${getRandomString()}`;
-            dynamicAttributes["..."] = `(()=>{
-              const ${resultVariableName} = ${code};
+            dynamicAttributes["..."] = `${isAsync ? "await (async " : "("}()=>{
+              const ${resultVariableName} = ${expressionCode};
               if(typeof ${resultVariableName} !== "object") {
                 console.warn(\`Attempted to spread non-object value \$\{${resultVariableName}\} onto element attributes\`);
                 return {};
@@ -128,7 +148,7 @@ export async function convertNodeToRenderString(node, imports, meta) {
               return ${resultVariableName};
             })()`;
           } else {
-            dynamicAttributes[attributeModifier] = code;
+            dynamicAttributes[attributeModifier] = expressionCode;
           }
 
           break;
@@ -139,16 +159,25 @@ export async function convertNodeToRenderString(node, imports, meta) {
            * attributeValue is the expression which should be evaluated to an escaped string which will
            * replace the element's children.
            */
-          const code = processExpressionString(attributeValue);
+          if (typeof attributeValue !== "string") {
+            console.warn(
+              `${meta.sourceFilePath}: Received #text attribute without an expression value`
+            );
+            continue;
+          }
+
+          const { expressionCode, isAsync } =
+            makeDynamicRenderStringContent(attributeValue);
+          meta.isAsync = meta.isAsync || isAsync;
 
           imports.escapeText = "#tmph/render/escapeText.js";
 
           if (!node.children || node.children.length === 0) {
             node.children = Object.preventExtensions([
-              `\$\{escapeText(${code})\}`,
+              `\$\{escapeText(${expressionCode})\}`,
             ]);
           } else {
-            node.children[0] = `\$\{escapeText(${code})\}`;
+            node.children[0] = `\$\{escapeText(${expressionCode})\}`;
             node.children.length = 1;
           }
 
@@ -160,14 +189,25 @@ export async function convertNodeToRenderString(node, imports, meta) {
            * attributeValue is the expression which should be evaluated to an HTML content string which will
            * replace the element's children without being escaped.
            */
-          const code = processExpressionString(attributeValue);
+          if (typeof attributeValue !== "string") {
+            console.warn(
+              `${meta.sourceFilePath}: Received #html attribute without an expression value`
+            );
+            break;
+          }
+
+          const { expressionCode, isAsync } =
+            makeDynamicRenderStringContent(attributeValue);
+          meta.isAsync = meta.isAsync || isAsync;
 
           imports.html = "#tmph/render/html.js";
 
           if (!node.children || node.children.length === 0) {
-            node.children = Object.preventExtensions([`\$\{html(${code})\}`]);
+            node.children = Object.preventExtensions([
+              `\$\{html(${expressionCode})\}`,
+            ]);
           } else {
-            node.children[0] = `\$\{html(${code})\}`;
+            node.children[0] = `\$\{html(${expressionCode})\}`;
             node.children.length = 1;
           }
 
@@ -205,9 +245,15 @@ export async function convertNodeToRenderString(node, imports, meta) {
   const isImportedComponent =
     meta.componentImports && tagName in meta.componentImports;
   const isInlineComponent =
-    meta.inlineComponents && tagName in meta.inlineComponents;
+    !isImportedComponent &&
+    meta.inlineComponents &&
+    tagName in meta.inlineComponents;
 
   if (isImportedComponent || isInlineComponent) {
+    const componentMeta = isImportedComponent
+      ? meta.componentImports?.[tagName].meta
+      : meta.inlineComponents?.[tagName].meta;
+
     let propsString = "";
 
     if (staticAttributes) {
@@ -303,9 +349,9 @@ export async function convertNodeToRenderString(node, imports, meta) {
       renderParams.namedSlots = stringifiedNamedSlots;
     }
 
-    renderedElement = `\$\{await ${tagName}.render(${stringifyObjectForRender(
-      renderParams
-    )})\}`;
+    renderedElement = `\$\{${
+      componentMeta?.isAsync ? "await" : ""
+    }${tagName}.render(${stringifyObjectForRender(renderParams)})\}`;
   } else {
     const isFragment = tagName === "_";
 
@@ -313,29 +359,34 @@ export async function convertNodeToRenderString(node, imports, meta) {
       let attributesString = "";
 
       for (const attributeName in staticAttributes) {
-        attributesString += await renderAttributeToString(
+        attributesString += await renderHTMLAttribute(
           attributeName,
           staticAttributes[attributeName]
         );
       }
 
       for (const attributeName in dynamicAttributes) {
+        imports.renderAttributeToString = "#tmph/render/renderAttributes.js";
+
+        const attributeValue = dynamicAttributes[attributeName];
+        const isAsync = attributeValue.startsWith("await");
+
         if (attributeName === "...") {
           const valueName = `__tmph_value_${getRandomString()}`;
           const keyName = `__tmph_key_${getRandomString()}`;
-          const attributePromisesName = `__tmph_attributePromises_${getRandomString()}`;
           const resultName = `__tmph_result_${getRandomString()}`;
-          attributesString += `\$\{await (async ()=> {
-            const ${valueName} = ${dynamicAttributes[attributeName]};
-            let ${attributePromisesName} = [];
+
+          attributesString += `\$\{${isAsync ? "await (async " : "("}()=> {
+            let ${resultName} = "";
+
+            const ${valueName} = ${attributeValue};
             for(const ${keyName} in ${valueName}){
-              ${attributePromisesName}.push(renderAttributeToString(${keyName}, ${valueName}[${keyName}]));
+              ${resultName} += \` \$\{renderAttributeToString(${keyName}, ${valueName}[${keyName}])\}\`;
             }
-            const ${resultName} =  (await Promise.all(${attributePromisesName})).join(" ");
-            return ${resultName} ? \` \$\{${resultName}\}\` : "";
+            return ${resultName};
           })()\}`;
         } else {
-          attributesString += `\$\{await renderAttributeToString(
+          attributesString += `\$\{renderAttributeToString(
             "${attributeName}",
             ${dynamicAttributes[attributeName]},
           )\}`;
@@ -419,22 +470,31 @@ export async function convertNodeToRenderString(node, imports, meta) {
             continue;
           }
 
-          renderedElement = `\$\{await (async ()=>{
-            ${attribute.modifier} = ${processExpressionString(attribute.value)};
+          const { expressionCode, isAsync } = makeDynamicRenderStringContent(
+            attribute.value
+          );
+          meta.isAsync = meta.isAsync || isAsync;
+
+          renderedElement = `\$\{${isAsync ? "await (async " : "("}()=>{
+            let ${attribute.modifier} = ${expressionCode};
             return \`${renderedElement}\`;
           })()\}`;
           break;
         }
         case "#if": {
-          const code = processExpressionString(attribute.value);
+          const { expressionCode, isAsync } = makeDynamicRenderStringContent(
+            attribute.value
+          );
+          meta.isAsync = meta.isAsync || isAsync;
 
-          renderedElement = `\$\{await (async ()=>{
-            return ${code} ? \`${renderedElement}\` : "";
-          })()\}`;
+          renderedElement = `\$\{${expressionCode} ? \`${renderedElement}\` : ""\}`;
           break;
         }
         case "#for": {
-          const code = processExpressionString(attribute.value);
+          const { expressionCode, isAsync } = makeDynamicRenderStringContent(
+            attribute.value
+          );
+          meta.isAsync = meta.isAsync || isAsync;
 
           const itemListVariableName = `__tmph_items_${getRandomString()}`;
 
@@ -445,8 +505,8 @@ export async function convertNodeToRenderString(node, imports, meta) {
 
           const renderStringVariableName = `__tmph_render_${getRandomString()}`;
 
-          renderedElement = `\$\{await (async ()=> {
-                const ${itemListVariableName} = ${code};
+          renderedElement = `\$\{${isAsync ? "await (async " : "("}()=> {
+                const ${itemListVariableName} = ${expressionCode};
                 let ${renderStringVariableName} = "";
                 let ${indexName} = 0;
                 for(const ${itemName} of ${itemListVariableName}){
@@ -458,7 +518,10 @@ export async function convertNodeToRenderString(node, imports, meta) {
           break;
         }
         case "#for-range": {
-          const code = processExpressionString(attribute.value);
+          const { expressionCode, isAsync } = makeDynamicRenderStringContent(
+            attribute.value
+          );
+          meta.isAsync = meta.isAsync || isAsync;
 
           const itemListVariableName = `__tmph_items_${getRandomString()}`;
 
@@ -467,8 +530,8 @@ export async function convertNodeToRenderString(node, imports, meta) {
 
           imports.renderForRange = "#tmph/render/renderForRange.js";
 
-          renderedElement = `\$\{(()=> {
-                const ${itemListVariableName} = ${code};
+          renderedElement = `\$\{${isAsync ? "await (async " : "("}()=> {
+                const ${itemListVariableName} = ${expressionCode};
                 return renderForRange(${itemListVariableName}, (${itemName}) => {
                   return \`${renderedElement}\`;
                 });

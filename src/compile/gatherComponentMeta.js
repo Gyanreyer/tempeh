@@ -5,28 +5,29 @@ import { getNodeAttributeValue } from "./getNodeAttributeValue.js";
 
 /**
  * @typedef {{
+ *  sourceFilePath: string;
+ *  hasDefaultSlot: boolean;
+ *  namedSlots: string[]|null;
+ *  usesProps: boolean;
+ *  isAsync: boolean;
  *  stylesheets?: string[];
  *  scripts?: string[];
- *  componentImports?: { [componentName: string]: string; };
- *  inlineComponents?: { [componentName: string]: Array<TmphNode | string>; };
+ *  componentImports?: { [componentName: string]: { importPath: string; meta: CachedMeta | null } };
+ *  inlineComponents?: { [componentName: string]: { nodes: Array<TmphNode | string>; meta: Meta }};
  *  jsDoc?: string;
- *  hasDefaultSlot?: boolean;
- *  namedSlots?: string[];
- *  usesProps: boolean;
  * }} Meta
+ */
+
+/**
+ * @typedef {Pick<Meta, "usesProps" | "isAsync" | "sourceFilePath" | "hasDefaultSlot" | "namedSlots">} CachedMeta
  */
 
 /**
  *
  * @param {Array<TmphNode|string>} nodeList
- * @param {Meta} [meta]
+ * @param {Meta} meta
  */
-export function gatherComponentMeta(
-  nodeList,
-  meta = {
-    usesProps: false,
-  }
-) {
+export function gatherComponentMeta(nodeList, meta) {
   let i = 0;
   let childCount = nodeList.length;
 
@@ -82,7 +83,10 @@ export function gatherComponentMeta(
             componentName = extractComponentName(href);
           }
 
-          (meta.componentImports ??= {})[componentName] = href;
+          (meta.componentImports ??= {})[componentName] = {
+            importPath: href,
+            meta: null,
+          };
           // Remove the link element so it isn't rendered
           removeCurrentChild();
           continue;
@@ -119,7 +123,18 @@ export function gatherComponentMeta(
             );
           }
 
-          (meta.inlineComponents ??= {})[inlineComponentName] = children;
+          const inlineComponentMeta = gatherComponentMeta(children, {
+            sourceFilePath: meta.sourceFilePath,
+            hasDefaultSlot: false,
+            namedSlots: null,
+            usesProps: false,
+            isAsync: false,
+          });
+
+          (meta.inlineComponents ??= {})[inlineComponentName] = {
+            nodes: children,
+            meta: inlineComponentMeta,
+          };
           removeCurrentChild();
           continue;
         }
@@ -142,4 +157,25 @@ export function gatherComponentMeta(
   }
 
   return meta;
+}
+
+export const cachedMetaCommentStart = "// __tmph_meta=";
+
+/**
+ * Takes a full Meta object and converts it into a pared-down CachedMeta object in
+ * the form of a comment string which will be placed on the second line of every compiled component file.
+ *
+ * @param {Meta} meta
+ */
+export function makeCachedMetaComment(meta) {
+  /** @type {CachedMeta} */
+  const cachedMeta = {
+    usesProps: meta.usesProps,
+    isAsync: meta.isAsync,
+    sourceFilePath: meta.sourceFilePath,
+    hasDefaultSlot: meta.hasDefaultSlot,
+    namedSlots: meta.namedSlots,
+  };
+
+  return `${cachedMetaCommentStart}${JSON.stringify(cachedMeta)}`;
 }

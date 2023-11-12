@@ -1,7 +1,9 @@
-// __tmph_integrity=301dfffe4546151756074dee7305d4d4162c9076385ba7526caa562ddef66ab5
-import * as UnderlinedLink from "/Users/ryangeyer/Projects/tempeh/examples/site/src/components/UnderlinedLink.tmph.js";
+// __tmph_integrity=b8e96d46f4472935e1b3d72fc057880f443eb7b28ad17b1e2a0bdfb95c5299e0
+// __tmph_meta={"usesProps":true,"isAsync":true,"sourceFilePath":"./examples/site/src/pages/index.tmph.html","hasDefaultSlot":false,"namedSlots":null}
 import * as Layout from "/Users/ryangeyer/Projects/tempeh/examples/site/src/Layout.tmph.js";
+import * as UnderlinedLink from "/Users/ryangeyer/Projects/tempeh/examples/site/src/components/UnderlinedLink.tmph.js";
 import renderAttributeToString from "#tmph/render/renderAttributes.js";
+import escapeText from "#tmph/render/escapeText.js";
 import defaultProps from "#tmph/render/defaultProps.js";
 
 
@@ -15,27 +17,32 @@ import defaultProps from "#tmph/render/defaultProps.js";
  * @param {Object} params
  * @param {Props} params.props
 */
-export async function render(params) {const props = defaultProps(params?.props, {"showForm": false,"formProps": {method: "POST"},});
+export  async function render(params) {const props = defaultProps(params?.props, {"showForm": false,"formProps": {method: "POST"},});
 
-  return `${await Layout.render({props: {title: "Welcome to my home page",},slot: `<h1>Hello, world!</h1>
-${await UnderlinedLink.render({props: {href: "/about",},slot: `About
+  return `${Layout.render({props: {title: "Welcome to my home page",},slot: `<h1>Hello, world!</h1>
+ 
+${UnderlinedLink.render({props: {href: "/about",},slot: `About
 <svg slot="icon"></svg>`})}
-${await (async ()=>{
-            return props.showForm ? `<div><form${await (async ()=> {
-            const __tmph_value_a4dx2n0fvn = (()=>{
-              const __tmph_result_8ovig16olsf = props.formProps;
-              if(typeof __tmph_result_8ovig16olsf !== "object") {
-                console.warn(`Attempted to spread non-object value ${__tmph_result_8ovig16olsf} onto element attributes`);
+ 
+${(props.showForm) ? `<div><form${(()=> {
+            let __tmph_result_vrwmofj6nwf = "";
+
+            const __tmph_value_3zxhqo1nuxi = (()=>{
+              const __tmph_result_jp72rw1as2h = (props.formProps);
+              if(typeof __tmph_result_jp72rw1as2h !== "object") {
+                console.warn(`Attempted to spread non-object value ${__tmph_result_jp72rw1as2h} onto element attributes`);
                 return {};
               }
-              return __tmph_result_8ovig16olsf;
+              return __tmph_result_jp72rw1as2h;
             })();
-            let __tmph_attributePromises_03hfage3l59y = [];
-            for(const __tmph_key_q79zys657 in __tmph_value_a4dx2n0fvn){
-              __tmph_attributePromises_03hfage3l59y.push(renderAttributeToString(__tmph_key_q79zys657, __tmph_value_a4dx2n0fvn[__tmph_key_q79zys657]));
+            for(const __tmph_key_00tubohqmowpl in __tmph_value_3zxhqo1nuxi){
+              __tmph_result_vrwmofj6nwf += ` ${renderAttributeToString(__tmph_key_00tubohqmowpl, __tmph_value_3zxhqo1nuxi[__tmph_key_00tubohqmowpl])}`;
             }
-            const __tmph_result_1b2ijkoln21 =  (await Promise.all(__tmph_attributePromises_03hfage3l59y)).join(" ");
-            return __tmph_result_1b2ijkoln21 ? ` ${__tmph_result_1b2ijkoln21}` : "";
-          })()}></form></div>` : "";
-          })()}`})}`;
+            return __tmph_result_vrwmofj6nwf;
+          })()}></form></div>` : ""}
+ 
+<div><p>The temperature in Detroit is ${await (async ()=>{
+            let forecast = (await fetch('https://api.weather.gov/gridpoints/DTX/66,34/forecast').then((res)=>res.json()));
+            return `${escapeText((forecast.properties.periods[0].temperature))}`;
+          })()}</p></div>`})}`;
 }

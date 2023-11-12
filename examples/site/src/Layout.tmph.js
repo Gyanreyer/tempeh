@@ -1,21 +1,21 @@
-// __tmph_integrity=f9c7e836f6bcfdba5fe725e6e11ae5c9af55430f7306f29f0f9c8dc0fffc442d
+// __tmph_integrity=7f0756076abe4ce237c7b69e7fce19bdc571c360c789c61d093d7efcdea6a2a1
+// __tmph_meta={"usesProps":true,"isAsync":false,"sourceFilePath":"/Users/ryangeyer/Projects/tempeh/examples/site/src/Layout.tmph.html","hasDefaultSlot":true,"namedSlots":null}
 import escapeText from "#tmph/render/escapeText.js";
 import defaultProps from "#tmph/render/defaultProps.js";
 
 
 /**
    * @typedef  {Object} Props
-   * @property {string} [props.title="My Tempeh Site"]
+   * @property {string} [title="My Tempeh Site"]
    */
 /**
  * @param {Object} [params]
  * @param {Props} [params.props]
  * @param {string|null} [params.slot=""]
 */
-export async function render(params) {const slot = params?.slot ?? "";
-const namedSlots = params?.namedSlots ?? {};
-const props = defaultProps(params?.props, {"props": {title: "My Tempeh Site"},});
+export  function render(params) {const slot = params?.slot ?? "";
+const props = defaultProps(params?.props, {"title": "My Tempeh Site",});
 
-  return `<!DOCTYPE html>
-<html lang="en-US"><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width, initial-scale=1.0"><title>${escapeText(props.title)}</title></head><body>${slot ?? ""}</body></html>`;
+  return `<!DOCTYPE html> 
+<html lang="en-US"><head><meta charset="UTF-8"> <meta name="viewport" content="width=device-width, initial-scale=1.0"> <title>${escapeText((props.title))}</title></head> <body>${slot ?? ""}</body></html>`;
 }
