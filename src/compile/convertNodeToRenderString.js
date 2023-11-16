@@ -177,8 +177,11 @@ export async function convertNodeToRenderString(node, imports, meta) {
               `\$\{escapeText(${expressionCode})\}`,
             ]);
           } else {
-            node.children[0] = `\$\{escapeText(${expressionCode})\}`;
-            node.children.length = 1;
+            node.children.splice(
+              0,
+              node.children.length,
+              `\$\{escapeText(${expressionCode})\}`
+            );
           }
 
           break;
@@ -207,8 +210,11 @@ export async function convertNodeToRenderString(node, imports, meta) {
               `\$\{html(${expressionCode})\}`,
             ]);
           } else {
-            node.children[0] = `\$\{html(${expressionCode})\}`;
-            node.children.length = 1;
+            node.children.splice(
+              0,
+              node.children.length,
+              `\$\{html(${expressionCode})\}`
+            );
           }
 
           break;

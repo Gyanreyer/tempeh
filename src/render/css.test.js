@@ -4,27 +4,37 @@ import * as assert from "node:assert";
 import css from "./css.js";
 
 describe("css", () => {
-  test("should scope CSS as expected", () => {
+  test("@scope should scope CSS as expected", () => {
     const cssString = css(
       `
-      .foo {
-        color: red;
+      @scope {
+        .foo {
+          padding: 4px;
+        }
+
+        .bar :scope {
+          font-weight: bold;
+        }
+
+        :scope {
+          background: none;
+        }
+
+        p.baz:scope {
+          font-size: 2rem;
+        }
+
+        :is(:scope, .foo) {
+          display: flex;
+        }
       }
 
-      .bar :host {
-        color: blue;
+      body {
+        margin: 0;
       }
 
-      :host {
-        color: green;
-      }
-
-      :host(p.baz) {
-        color: yellow;
-      }
-
-      :is(:host, .foo) {
-        color: purple;
+      :root {
+        --my-var: 1px;
       }
     `,
       "my-scid",
@@ -35,23 +45,31 @@ describe("css", () => {
     );
 
     const expectedOutput = `[data-scid="my-scid"] .foo {
-  color: red;
+  padding: 4px;
 }
 
 .bar [data-scid="my-scid"] {
-  color: #00f;
+  font-weight: bold;
 }
 
 [data-scid="my-scid"] {
-  color: green;
+  background: none;
 }
 
-[data-scid="my-scid"]p.baz {
-  color: #ff0;
+p.baz[data-scid="my-scid"] {
+  font-size: 2rem;
 }
 
 :is([data-scid="my-scid"], .foo) {
-  color: purple;
+  display: flex;
+}
+
+body {
+  margin: 0;
+}
+
+:root {
+  --my-var: 1px;
 }
 `;
 

@@ -1,56 +1,38 @@
 import { transform } from "lightningcss";
 
-/** @typedef {import("lightningcss").Selector} Selector */
-/** @typedef {import("lightningcss").SelectorComponent} SelectorComponent */
-
-/** @type {SelectorComponent} */
-const descendantCombinator = {
-  type: "combinator",
-  value: "descendant",
-};
+/**
+ * @typedef {import("lightningcss").Selector} Selector
+ * @typedef {import("lightningcss").SelectorComponent} SelectorComponent
+ * @typedef {import("lightningcss").ScopeRule} ScopeRule
+ * @typedef {import("lightningcss").Rule} Rule
+ */
 
 /**
  *
  * @param {Selector} selector
  * @param {SelectorComponent} scopedAttributeSelector
+ * @returns {boolean}
  */
 const scopeSelector = (selector, scopedAttributeSelector) => {
-  let hasHostSelector = false;
+  let hasScopeSelector = false;
 
   for (let i = 0, selectorCount = selector.length; i < selectorCount; ++i) {
     const selectorComponent = selector[i];
     if (selectorComponent.type === "pseudo-class") {
       switch (selectorComponent.kind) {
-        case "host": {
-          hasHostSelector = true;
-
-          // Replace :host with the scoped component ID
-          selector.splice(i, 1, scopedAttributeSelector);
-
-          let addedSelectorCount = selector.length - selectorCount;
-          i += addedSelectorCount;
-          selectorCount += addedSelectorCount;
-
-          if (selectorComponent.selectors) {
-            selector.splice(i + 1, 0, ...selectorComponent.selectors);
-
-            addedSelectorCount = selector.length - selectorCount;
-            i += addedSelectorCount;
-            selectorCount += addedSelectorCount;
-          }
-
+        case "scope": {
+          // Replace :scope with the scoped component ID
+          selector[i] = scopedAttributeSelector;
+          hasScopeSelector = true;
           break;
         }
         default: {
-          if ("selectors" in selectorComponent) {
+          if ("selectors" in selectorComponent && selectorComponent.selectors) {
             for (const subSelector of selectorComponent.selectors) {
-              const didSubSelectorHaveHostSelector = scopeSelector(
-                subSelector,
-                scopedAttributeSelector
-              );
-
-              if (didSubSelectorHaveHostSelector) {
-                hasHostSelector = true;
+              if (Array.isArray(subSelector)) {
+                hasScopeSelector =
+                  hasScopeSelector ||
+                  scopeSelector(subSelector, scopedAttributeSelector);
               }
             }
           }
@@ -60,7 +42,50 @@ const scopeSelector = (selector, scopedAttributeSelector) => {
     }
   }
 
-  return hasHostSelector;
+  return hasScopeSelector;
+};
+
+/** @type {SelectorComponent} */
+const descendantCombinator = {
+  type: "combinator",
+  value: "descendant",
+};
+
+/**
+ * @param {SelectorComponent} scopedAttributeSelector
+ * @param {{
+ *  type: "scope";
+ *  value: ScopeRule;
+ * }} scopeRule
+ * @returns {Rule | Rule[] | void}
+ */
+const transformScopeAtRule = (scopedAttributeSelector, scopeRule) => {
+  if (!scopeRule.value.scopeStart) {
+    for (const rule of scopeRule.value.rules) {
+      if (rule.type === "style") {
+        for (const selector of rule.value.selectors) {
+          // Scope every selector in the rule to the scoped component ID
+          const hasHostSelector = scopeSelector(
+            selector,
+            scopedAttributeSelector
+          );
+          if (!hasHostSelector) {
+            // If the selector didn't have a :host selector, prepend the scoped component ID at the front of the selector
+            selector.splice(
+              0,
+              0,
+              scopedAttributeSelector,
+              descendantCombinator
+            );
+          }
+        }
+      }
+    }
+
+    return scopeRule.value.rules;
+  }
+
+  return scopeRule;
 };
 
 /**
@@ -75,43 +100,27 @@ const scopeSelector = (selector, scopedAttributeSelector) => {
  * @returns {string}
  */
 export default function css(cssString, scopedComponentID, options) {
-  /** @type {SelectorComponent} */
-  const scopedAttributeSelector = {
-    type: "attribute",
-    name: "data-scid",
-    operation: {
-      operator: "equal",
-      value: scopedComponentID,
-    },
-  };
+  const shouldMinify = options?.minify ?? true;
+  const shouldScope = options?.scope ?? true;
 
   const processedCSSResult = transform({
     filename: `${scopedComponentID}.css`,
     code: Buffer.from(cssString),
-    minify: options?.minify ?? true,
-    visitor: {
-      Selector: options?.scope
-        ? (selector) => {
-            const hasHostSelector = scopeSelector(
-              selector,
-              scopedAttributeSelector
-            );
-
-            if (!hasHostSelector) {
-              // If the selector doesn't contain a :host selector, insert the scoped attribute selector
-              // at the front
-              selector.splice(
-                0,
-                0,
-                scopedAttributeSelector,
-                descendantCombinator
-              );
-            }
-
-            return selector;
-          }
-        : undefined,
-    },
+    minify: shouldMinify,
+    visitor: shouldScope
+      ? {
+          Rule: {
+            scope: transformScopeAtRule.bind(null, {
+              type: "attribute",
+              name: "data-scid",
+              operation: {
+                operator: "equal",
+                value: scopedComponentID,
+              },
+            }),
+          },
+        }
+      : undefined,
   });
 
   return processedCSSResult.code.toString();

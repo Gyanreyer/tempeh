@@ -577,8 +577,7 @@ componentMutationObserver.observe(document.body, {
 
 ### Scoped styles
 
-By default, styles written in a `<style>` tag will be transformed to be inlined in the output HTML and
-scoped within the component using a generated `data-scid` attribute set on the root element(s) of the component.
+Styles in a `<style>` tag can be scoped within the component's root element(s) using the [`@scope` at-rule](https://developer.chrome.com/articles/at-scope/).
 
 ```html
 <!-- Home.tmph.html -->
@@ -591,23 +590,31 @@ scoped within the component using a generated `data-scid` attribute set on the r
 </main>
 
 <style>
-  header {
-    display: flex;
-    flex-direction: column;
+  :root {
+    /* Global styles can be written like normal */
+    --my-var: 1px;
   }
 
-  h1 {
-    font-size: 4rem;
+  @scope {
+    header:scope {
+      display: flex;
+      flex-direction: column;
+    }
+  
+    h1 {
+      font-size: 4rem;
+    }
+  
+    p {
+      font-size: 0.8rem;
+    }
+  
+    main:scope img {
+      display: block;
+      width: 2rem;
+    }
   }
 
-  p {
-    font-size: 0.8rem;
-  }
-
-  img {
-    display: block;
-    width: 2rem;
-  }
 </style>
 
 <!-- Rendered output -->
@@ -619,70 +626,26 @@ scoped within the component using a generated `data-scid` attribute set on the r
   <img src="logo.png" alt="Logo" />
 </main>
 <style>
-  [data-scid="Home-hla3f23"]header,
-  [data-scid="Home-hla3f23"] header {
+  :root {
+    --my-var: 1px;
+  }
+
+  header[data-scid="Home-hla3f23"]header {
     display: flex;
     flex-direction: column;
   }
 
-  [data-scid="Header-hla3f23"]h1,
   [data-scid="Header-hla3f23"] h1 {
     font-size: 4rem;
   }
 
-  [data-scid="Header-hla3f23"]p,
   [data-scid="Header-hla3f23"] p {
     font-size: 0.8rem;
   }
 
-  [data-scid="Header-hla3f23"]img,
-  [data-scid="Header-hla3f23"] img {
+  main[data-scid="Header-hla3f23"] img {
     display: block;
     width: 2rem;
-  }
-</style>
-```
-
-### Global (un-scoped) styles
-
-If you wish to write styles which are not scoped, you have two options:
-
-1. Selectors inside a scoped style tag can be made global by wrapping them with a `:global()` selector
-2. A whole style tag can be made global by adding a `#global` attribute flag
-
-```html
-<div />
-
-<style #global>
-  :root {
-    --color-red: #EE0000;
-  }
-</style>
-<style>
-  :global(body) {
-    margin: 0;
-  }
-
-  div {
-    background: var(--color-red);
-  }
-</style>
-
-<!-- Rendered output -->
-<div data-scid="Cmp-asd0f2"></div>
-
-<style>
-  :root {
-    --color-red: #EE0000;
-  }
-
-  body {
-    margin: 0;
-  }
-
-  [data-scid="Cmp-asd0f2"]div,
-  [data-scid="Cmp-asd0f2"] div {
-    background: var(--color-red);
   }
 </style>
 ```
