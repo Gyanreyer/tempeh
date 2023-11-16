@@ -75,4 +75,54 @@ body {
 
     assert.strictEqual(cssString, expectedOutput);
   });
+
+  test("@scope can take a selector to target specific root elements", () => {
+    const cssString = css(
+      `
+      @scope(header){
+        :scope {
+          background: none;
+        }
+
+        img {
+          display: block;
+        }
+      }
+
+      @scope(header, footer){
+        :scope {
+          font-weight: bold;
+        }
+
+        img {
+          display: inline;
+        }
+      }
+      `,
+      "my-scid",
+      {
+        scope: true,
+        minify: false,
+      }
+    );
+
+    const expectedOutput = `[data-scid="my-scid"]header {
+  background: none;
+}
+
+[data-scid="my-scid"]header img {
+  display: block;
+}
+
+[data-scid="my-scid"]:is(header, footer) {
+  font-weight: bold;
+}
+
+[data-scid="my-scid"]:is(header, footer) img {
+  display: inline;
+}
+`;
+
+    assert.strictEqual(cssString, expectedOutput);
+  });
 });

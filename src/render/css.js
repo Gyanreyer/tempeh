@@ -10,7 +10,7 @@ import { transform } from "lightningcss";
 /**
  *
  * @param {Selector} selector
- * @param {SelectorComponent} scopedAttributeSelector
+ * @param {Selector} scopedAttributeSelector
  * @returns {boolean}
  */
 const scopeSelector = (selector, scopedAttributeSelector) => {
@@ -22,8 +22,9 @@ const scopeSelector = (selector, scopedAttributeSelector) => {
       switch (selectorComponent.kind) {
         case "scope": {
           // Replace :scope with the scoped component ID
-          selector[i] = scopedAttributeSelector;
+          selector.splice(i, 1, ...scopedAttributeSelector);
           hasScopeSelector = true;
+          selectorCount += scopedAttributeSelector.length - 1;
           break;
         }
         default: {
@@ -60,32 +61,34 @@ const descendantCombinator = {
  * @returns {Rule | Rule[] | void}
  */
 const transformScopeAtRule = (scopedAttributeSelector, scopeRule) => {
-  if (!scopeRule.value.scopeStart) {
-    for (const rule of scopeRule.value.rules) {
-      if (rule.type === "style") {
-        for (const selector of rule.value.selectors) {
-          // Scope every selector in the rule to the scoped component ID
-          const hasHostSelector = scopeSelector(
-            selector,
-            scopedAttributeSelector
-          );
-          if (!hasHostSelector) {
-            // If the selector didn't have a :host selector, prepend the scoped component ID at the front of the selector
-            selector.splice(
-              0,
-              0,
-              scopedAttributeSelector,
-              descendantCombinator
-            );
-          }
+  /** @type {Selector} */
+  let scopedSelector = [scopedAttributeSelector];
+  if (scopeRule.value.scopeStart) {
+    if (scopeRule.value.scopeStart.length === 1) {
+      scopedSelector.push(...scopeRule.value.scopeStart[0]);
+    } else if (scopeRule.value.scopeStart.length > 1) {
+      scopedSelector.push({
+        type: "pseudo-class",
+        kind: "is",
+        selectors: scopeRule.value.scopeStart,
+      });
+    }
+  }
+
+  for (const rule of scopeRule.value.rules) {
+    if (rule.type === "style") {
+      for (const selector of rule.value.selectors) {
+        // Scope every selector in the rule to the scoped component ID
+        const hasScopeSelector = scopeSelector(selector, scopedSelector);
+        if (!hasScopeSelector) {
+          // If the selector didn't have a :host selector, prepend the scoped component ID at the front of the selector
+          selector.splice(0, 0, ...scopedSelector, descendantCombinator);
         }
       }
     }
-
-    return scopeRule.value.rules;
   }
 
-  return scopeRule;
+  return scopeRule.value.rules;
 };
 
 /**

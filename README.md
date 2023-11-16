@@ -579,6 +579,65 @@ componentMutationObserver.observe(document.body, {
 
 Styles in a `<style>` tag can be scoped within the component's root element(s) using the [`@scope` at-rule](https://developer.chrome.com/articles/at-scope/).
 
+Any CSS wrapped inside an `@scope` rule will be transformed to scope all selectors within an auto-generated data attribute
+that will be applied to all root elements of the component.
+
+To select the root element, you may use a `:scope` selector.
+
+```html
+<!-- FancyLink.tmph.html -->
+<a :href="props.href">
+  <svg class="icon"></svg>
+  <slot></slot>
+</a>
+<style>
+  @scope {
+    :scope {
+      text-decoration: none;
+      color: cornflowerblue;
+    }
+
+    :scope:hover {
+      transform: scale(1.1);
+    }
+
+    .icon {
+      width: 1rem;
+      height: auto;
+    }
+
+    main :scope {
+      /* Apply a style for all FancyLinks inside the <main> tag */
+      color: red;
+    }
+  }
+</style>
+
+<!-- Rendered Output -->
+<a href="/" data-scid="FancyLink-lsda21f">Home</a>
+<style>
+  [data-scid="FancyLink-lsda21f"] {
+    text-decoration: none;
+    color: cornflowerblue;
+  }
+
+  [data-scid="FancyLink-lsda21f"]:hover {
+    transform: scale(1.1);
+  }
+
+  [data-scid="FancyLink-lsda21f"] .icon {
+    width: 1rem;
+    height: auto;
+  }
+
+  main [data-scid="FancyLink-lsda21f"] {
+    color: red;
+  }
+</style>
+```
+
+For components with multiple root elements, you can pass the selector for a specific root element to `@scope`.
+
 ```html
 <!-- Home.tmph.html -->
 <header>
@@ -590,13 +649,8 @@ Styles in a `<style>` tag can be scoped within the component's root element(s) u
 </main>
 
 <style>
-  :root {
-    /* Global styles can be written like normal */
-    --my-var: 1px;
-  }
-
-  @scope {
-    header:scope {
+  @scope(header) {
+    :scope {
       display: flex;
       flex-direction: column;
     }
@@ -608,8 +662,10 @@ Styles in a `<style>` tag can be scoped within the component's root element(s) u
     p {
       font-size: 0.8rem;
     }
-  
-    main:scope img {
+  }
+
+  @scope(main) {
+    img {
       display: block;
       width: 2rem;
     }
@@ -626,29 +682,28 @@ Styles in a `<style>` tag can be scoped within the component's root element(s) u
   <img src="logo.png" alt="Logo" />
 </main>
 <style>
-  :root {
-    --my-var: 1px;
-  }
-
-  header[data-scid="Home-hla3f23"]header {
+  [data-scid="Home-hla3f23"]header {
     display: flex;
     flex-direction: column;
   }
 
-  [data-scid="Header-hla3f23"] h1 {
+  [data-scid="Header-hla3f23"]header h1 {
     font-size: 4rem;
   }
 
-  [data-scid="Header-hla3f23"] p {
+  [data-scid="Header-hla3f23"]header p {
     font-size: 0.8rem;
   }
 
-  main[data-scid="Header-hla3f23"] img {
+  [data-scid="Header-hla3f23"]main img {
     display: block;
     width: 2rem;
   }
 </style>
 ```
+
+The `@scope() to ()` syntax described in the CSS `@scope` spec which allows you to limit the scope
+to elements outside of a given selector is not currently supported.
 
 ### External Stylesheets
 
