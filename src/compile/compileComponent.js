@@ -12,16 +12,23 @@ import {
 } from "./gatherComponentMeta.js";
 import { makeComponentJSdoc } from "./makeComponentJSdoc.js";
 import { convertNodeToRenderString } from "./convertNodeToRenderString.js";
-import { deepPreventExtensions } from "../utils/deepPreventExtensions.js";
 import { stringifyObjectForRender } from "./stringifyObjectForRender.js";
+import { extractComponentName } from "./extractComponentName.js";
+import processCSS from "./processCSS.js";
 
 /** @typedef {import("./parseXML.js").TmphNode} TmphNode */
-/** @typedef {import("./gatherComponentMeta.js").Meta} Meta */
+/**
+ * @typedef {import("./gatherComponentMeta.js").Meta} Meta
+ * @typedef {import("./gatherComponentMeta.js").ComponentAssets} ComponentAssets
+ */
 
 // Regex to match whether the render string references a props variable
 const propsVariableRegex = /\bprops\b/;
 
 const integrityCommentStart = "// __tmph_integrity=";
+// If we have a __tmph_integrity=SKIP comment at the top of the file, that means we should skip compilation and use the
+// existing compiled component file, even if it is out of date compared to the source file.
+const skipIntegrityComment = `${integrityCommentStart}SKIP`;
 
 /**
  * @param {string} componentPath
@@ -55,7 +62,12 @@ export async function compileComponent(componentPath, skipCache = false) {
         const firstLine = await readlineInterface[
           Symbol.asyncIterator
         ]().next();
-        if (!firstLine.done && firstLine.value.startsWith(integrityComment)) {
+        const firstLineString = firstLine.value;
+        if (
+          !firstLine.done &&
+          (firstLineString.startsWith(integrityComment) ||
+            firstLineString.startsWith(skipIntegrityComment))
+        ) {
           const secondLine = await readlineInterface[
             Symbol.asyncIterator
           ]().next();
@@ -81,22 +93,46 @@ export async function compileComponent(componentPath, skipCache = false) {
     } catch {}
   }
 
+  const componentName = extractComponentName(componentPath);
+  const scopedComponentID = `${componentName.slice(0, 8)}${integrityHash.slice(
+    0,
+    4
+  )}`;
+
   const rootNodes = await parseXML(componentFileBuffer);
-  const meta = deepPreventExtensions(
-    gatherComponentMeta(rootNodes, {
-      sourceFilePath: componentPath,
-      usesProps: false,
-      isAsync: false,
-      hasDefaultSlot: false,
-      namedSlots: null,
-    })
-  );
+
+  for (const node of rootNodes) {
+    if (typeof node !== "string") {
+      node.attributes ??= [];
+      node.attributes.push("data-scid", scopedComponentID);
+    }
+  }
+
+  /** @type {Meta} */
+  const meta = Object.preventExtensions({
+    sourceFilePath: componentPath,
+    usesProps: false,
+    isAsync: false,
+    hasDefaultSlot: false,
+    namedSlots: null,
+  });
+  /** @type {ComponentAssets} */
+  const componentAssets = Object.preventExtensions({
+    componentImports: null,
+    inlineComponents: null,
+    propTypesJsDoc: null,
+    assetBuckets: null,
+    inlineStylesheets: null,
+    inlineScripts: null,
+  });
+
+  gatherComponentMeta(rootNodes, meta, componentAssets);
 
   /** @type {Record<string, string>} */
   const imports = {};
 
-  if (meta.componentImports) {
-    const componentImports = meta.componentImports;
+  const componentImports = componentAssets.componentImports;
+  if (componentImports) {
     const resolveComponentImportPromises = [];
 
     for (const componentName in componentImports) {
@@ -139,9 +175,8 @@ export async function compileComponent(componentPath, skipCache = false) {
 
   let inlineComponentsString = "";
 
-  if (meta.inlineComponents) {
-    const inlineComponents = meta.inlineComponents;
-
+  const inlineComponents = componentAssets.inlineComponents;
+  if (inlineComponents) {
     for (const componentName in inlineComponents) {
       const inlineComponentMeta = {
         ...meta,
@@ -197,11 +232,24 @@ export async function compileComponent(componentPath, skipCache = false) {
     importsString += `import ${importMethod} from "${imports[importMethod]}";\n`;
   }
 
+  let inlineStyles = null;
+  if (componentAssets.inlineStylesheets) {
+    inlineStyles = processCSS(
+      componentAssets.inlineStylesheets.join("\n"),
+      scopedComponentID
+    );
+  }
+
   await writeFile(
     outputPath,
     `${integrityComment}
 ${makeCachedMetaComment(meta)}
 ${importsString}
+${
+  componentAssets.assetBuckets
+    ? `export const assets = ${JSON.stringify(componentAssets.assetBuckets)};`
+    : ""
+}
 ${inlineComponentsString}
 ${jsDocString}
 export ${meta.isAsync ? " async " : " "}function render(params) {${
@@ -228,7 +276,9 @@ export ${meta.isAsync ? " async " : " "}function render(params) {${
           })()});\n`
         : "const props = params?.props ?? {};\n"
     }
-  return \`${renderString}\`;
+  return \`${renderString}${
+      inlineStyles ? `<style>${inlineStyles}</style>` : ""
+    }\`;
 }`
   );
 

@@ -1,33 +1,46 @@
+import { readFileSync } from "node:fs";
 import { extractComponentName } from "./extractComponentName.js";
-import { getNodeAttributeValue } from "./getNodeAttributeValue.js";
+import {
+  getNodeAttributeValue,
+  removeNodeAttribute,
+} from "./getNodeAttributeValue.js";
 
 /** @typedef {import("./parseXML.js").TmphNode} TmphNode */
 
 /**
- * @typedef {{
- *  sourceFilePath: string;
- *  hasDefaultSlot: boolean;
- *  namedSlots: string[]|null;
- *  usesProps: boolean;
- *  isAsync: boolean;
- *  stylesheets?: string[];
- *  scripts?: string[];
- *  componentImports?: { [componentName: string]: { importPath: string; meta: CachedMeta | null } };
- *  inlineComponents?: { [componentName: string]: { nodes: Array<TmphNode | string>; meta: Meta }};
- *  jsDoc?: string;
- * }} Meta
+ * @typedef {Object} Meta
+ * @property {string} sourceFilePath
+ * @property {boolean} hasDefaultSlot
+ * @property {string[]|null} namedSlots
+ * @property {boolean} usesProps
+ * @property {boolean} isAsync
  */
 
 /**
- * @typedef {Pick<Meta, "usesProps" | "isAsync" | "sourceFilePath" | "hasDefaultSlot" | "namedSlots">} CachedMeta
+ * @typedef {Object} AssetBucket
+ * @property {string[]} stylesheets
+ * @property {string[]} scripts
  */
+
+/**
+ * @typedef {Object} ComponentAssets
+ * @property {{ [componentName: string]: { importPath: string; meta: Meta | null; } }|null} componentImports
+ * @property {{ [componentName: string]: { nodes: Array<TmphNode | string>; meta: Meta; } }|null} inlineComponents
+ * @property {string|null} propTypesJsDoc
+ * @property {Record<string, AssetBucket>|null} assetBuckets
+ * @property {string[]|null} inlineStylesheets
+ * @property {string[]|null} inlineScripts
+ */
+
+const DEFAULT_BUCKET_NAME = "default";
 
 /**
  *
  * @param {Array<TmphNode|string>} nodeList
  * @param {Meta} meta
+ * @param {ComponentAssets} componentAssets
  */
-export function gatherComponentMeta(nodeList, meta) {
+export function gatherComponentMeta(nodeList, meta, componentAssets) {
   let i = 0;
   let childCount = nodeList.length;
 
@@ -72,9 +85,31 @@ export function gatherComponentMeta(nodeList, meta) {
         }
 
         if (rel === "stylesheet") {
-          (meta.stylesheets ??= []).push(href);
-          // Remove the link element so it isn't rendered
-          removeCurrentChild();
+          if (href.startsWith("http")) {
+            // Absolute URL imports are ignored
+            continue;
+          }
+
+          try {
+            const filePath = import.meta.resolve(href);
+            const cssFile = readFileSync(filePath, "utf8");
+
+            let bucketName = getNodeAttributeValue(child, "bucket");
+            if (!bucketName || typeof bucketName !== "string") {
+              bucketName = DEFAULT_BUCKET_NAME;
+            }
+
+            componentAssets.assetBuckets ??= {};
+            componentAssets.assetBuckets[bucketName] ??= {
+              stylesheets: [],
+              scripts: [],
+            };
+
+            componentAssets.assetBuckets[bucketName].stylesheets.push(cssFile);
+            // Remove the link element so it isn't rendered
+            removeCurrentChild();
+          } catch {}
+
           continue;
         } else if (rel === "import") {
           let componentName = getNodeAttributeValue(child, "as");
@@ -83,7 +118,8 @@ export function gatherComponentMeta(nodeList, meta) {
             componentName = extractComponentName(href);
           }
 
-          (meta.componentImports ??= {})[componentName] = {
+          componentAssets.componentImports ??= {};
+          componentAssets.componentImports[componentName] = {
             importPath: href,
             meta: null,
           };
@@ -94,18 +130,67 @@ export function gatherComponentMeta(nodeList, meta) {
         break;
       }
       case "script": {
-        if (getNodeAttributeValue(child, "#types")) {
-          meta.jsDoc = "";
+        if (getNodeAttributeValue(child, "#prop-types")) {
+          componentAssets.propTypesJsDoc = "";
           if (children) {
             for (const grandChild of children) {
               if (typeof grandChild === "string") {
-                meta.jsDoc += grandChild;
+                componentAssets.propTypesJsDoc += grandChild;
               }
             }
           }
           removeCurrentChild();
           continue;
         }
+        break;
+      }
+      case "style": {
+        if (getNodeAttributeValue(child, "#raw")) {
+          // Raw style elements are not processed and rendered inline,
+          // so just remove the #raw attribute
+          removeNodeAttribute(child, "#raw");
+          break;
+        }
+
+        const styleContent = child.children?.[0];
+        if (typeof styleContent !== "string") {
+          console.error(
+            "Received invalid content for <style> tag",
+            styleContent
+          );
+          removeCurrentChild();
+          break;
+        } else if (!styleContent.trim()) {
+          // If the style tag is empty, just remove it
+          removeCurrentChild();
+          break;
+        }
+
+        // Inline styles are processed but will be rendered in a <style> tag
+        // in the component
+        if (getNodeAttributeValue(child, "#inline")) {
+          componentAssets.inlineStylesheets ??= [];
+          componentAssets.inlineStylesheets.push(styleContent);
+          removeCurrentChild();
+          break;
+        }
+
+        let bucketName = getNodeAttributeValue(child, "bucket");
+
+        if (!bucketName || typeof bucketName !== "string") {
+          bucketName = DEFAULT_BUCKET_NAME;
+        }
+
+        componentAssets.assetBuckets ??= {};
+        componentAssets.assetBuckets[bucketName] ??= {
+          stylesheets: [],
+          scripts: [],
+        };
+
+        componentAssets.assetBuckets[bucketName].stylesheets.push(styleContent);
+
+        // Remove the style element so it isn't rendered in the component
+        removeCurrentChild();
         break;
       }
       case "template": {
@@ -123,15 +208,18 @@ export function gatherComponentMeta(nodeList, meta) {
             );
           }
 
-          const inlineComponentMeta = gatherComponentMeta(children, {
+          /** @type {Meta} */
+          const inlineComponentMeta = {
             sourceFilePath: meta.sourceFilePath,
             hasDefaultSlot: false,
             namedSlots: null,
             usesProps: false,
             isAsync: false,
-          });
+          };
 
-          (meta.inlineComponents ??= {})[inlineComponentName] = {
+          gatherComponentMeta(children, inlineComponentMeta, componentAssets);
+
+          (componentAssets.inlineComponents ??= {})[inlineComponentName] = {
             nodes: children,
             meta: inlineComponentMeta,
           };
@@ -152,7 +240,7 @@ export function gatherComponentMeta(nodeList, meta) {
     }
 
     if (child.children) {
-      gatherComponentMeta(child.children, meta);
+      gatherComponentMeta(child.children, meta, componentAssets);
     }
   }
 
@@ -168,14 +256,5 @@ export const cachedMetaCommentStart = "// __tmph_meta=";
  * @param {Meta} meta
  */
 export function makeCachedMetaComment(meta) {
-  /** @type {CachedMeta} */
-  const cachedMeta = {
-    usesProps: meta.usesProps,
-    isAsync: meta.isAsync,
-    sourceFilePath: meta.sourceFilePath,
-    hasDefaultSlot: meta.hasDefaultSlot,
-    namedSlots: meta.namedSlots,
-  };
-
-  return `${cachedMetaCommentStart}${JSON.stringify(cachedMeta)}`;
+  return `${cachedMetaCommentStart}${JSON.stringify(meta)}`;
 }

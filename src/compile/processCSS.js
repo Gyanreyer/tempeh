@@ -92,25 +92,30 @@ const transformScopeAtRule = (scopedAttributeSelector, scopeRule) => {
 };
 
 /**
- * Template literal string tag which performs basic CSS minification on the string.
+ * Function takes a CSS string, processes it with LightningCSS to minify and apply scoping, and returns the processed CSS string.
  *
  * @param {string} cssString
  * @param {string} scopedComponentID
  * @param {object} [options]
- * @param {boolean} [options.minify=true]
- * @param {boolean} [options.scope=true]
+ * @param {boolean} [options.raw=false]   Whether to return the raw CSS string without processing it
+ * @param {boolean} [options.minify=true] Whether to minify the CSS string
  *
  * @returns {string}
  */
-export default function css(cssString, scopedComponentID, options) {
+export default function processCSS(cssString, scopedComponentID, options) {
   const shouldMinify = options?.minify ?? true;
-  const shouldScope = options?.scope ?? true;
+  const shouldProcess = !(options?.raw ?? false);
+
+  if (!shouldProcess && !shouldMinify) {
+    // If we don't want to process or minify the CSS, just return the raw CSS string
+    return cssString;
+  }
 
   const processedCSSResult = transform({
     filename: `${scopedComponentID}.css`,
     code: Buffer.from(cssString),
     minify: shouldMinify,
-    visitor: shouldScope
+    visitor: shouldProcess
       ? {
           Rule: {
             scope: transformScopeAtRule.bind(null, {

@@ -1,11 +1,11 @@
 import { test, describe } from "node:test";
 import * as assert from "node:assert";
 
-import css from "./css.js";
+import processCSS from "./processCSS.js";
 
 describe("css", () => {
   test("@scope should scope CSS as expected", () => {
-    const cssString = css(
+    const cssString = processCSS(
       `
       @scope {
         .foo {
@@ -39,7 +39,6 @@ describe("css", () => {
     `,
       "my-scid",
       {
-        scope: true,
         minify: false,
       }
     );
@@ -77,7 +76,7 @@ body {
   });
 
   test("@scope can take a selector to target specific root elements", () => {
-    const cssString = css(
+    const cssString = processCSS(
       `
       @scope(header){
         :scope {
@@ -101,7 +100,6 @@ body {
       `,
       "my-scid",
       {
-        scope: true,
         minify: false,
       }
     );
