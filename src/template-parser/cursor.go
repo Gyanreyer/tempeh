@@ -4,6 +4,17 @@ import (
 	"errors"
 )
 
+type RenderAttribute struct {
+	AttributeName     string `json:"name"`
+	AttributeModifier string `json:"modifier,omitempty"`
+	AttributeValue    string `json:"value,omitempty"`
+}
+
+type StaticAttribute struct {
+	AttributeName  string `json:"name"`
+	AttributeValue string `json:"value,omitempty"`
+}
+
 func isVoidElement(tagName string) bool {
 	return tagName == "area" || tagName == "base" || tagName == "br" || tagName == "col" || tagName == "embed" || tagName == "hr" || tagName == "img" || tagName == "input" || tagName == "link" || tagName == "meta" || tagName == "param" || tagName == "source" || tagName == "track" || tagName == "wbr"
 }
@@ -264,8 +275,9 @@ func (c *Cursor) ReadTagName() string {
 	return c.str[startIndex:c.index]
 }
 
-func (c *Cursor) ReadOpeningTagAttributes() []interface{} {
-	var attributes []interface{} = nil
+func (c *Cursor) ReadOpeningTagAttributes() ([]StaticAttribute, []RenderAttribute) {
+	var staticAttributes []StaticAttribute = nil
+	var renderAttributes []RenderAttribute = nil
 
 	ch, err := c.CurrentChar()
 
@@ -280,21 +292,53 @@ func (c *Cursor) ReadOpeningTagAttributes() []interface{} {
 			break
 		}
 
-		if attributes == nil {
-			attributes = []interface{}{}
+		isDynamicAttribute := ch == ':'
+		isRenderAttribute := isDynamicAttribute || ch == '#'
+		renderAttributeModifierIndex := -1
+
+		// Skip the : or # char
+		if isRenderAttribute {
+			ch, err = c.AdvanceChar()
+		}
+
+		if isRenderAttribute && renderAttributes == nil {
+			renderAttributes = []RenderAttribute{}
+		} else if !isRenderAttribute && staticAttributes == nil {
+			staticAttributes = []StaticAttribute{}
 		}
 
 		attributeNameStartIndex := c.index
 
 		for err == nil && isLegalTagOrAttributeNameChar(ch) {
+			if isRenderAttribute && (ch == ':') {
+				renderAttributeModifierIndex = c.index
+			}
 			ch, err = c.AdvanceChar()
 		}
 
-		attributeName := c.str[attributeNameStartIndex:c.index]
+		var attributeName string
+		var attributeModifier string
+
+		if isDynamicAttribute {
+			attributeName = "#attr"
+			attributeModifier = c.str[attributeNameStartIndex:c.index]
+		} else if isRenderAttribute {
+			if renderAttributeModifierIndex != -1 {
+				attributeName = c.str[attributeNameStartIndex:renderAttributeModifierIndex]
+				attributeModifier = c.str[renderAttributeModifierIndex+1 : c.index]
+			} else {
+				attributeName = c.str[attributeNameStartIndex:c.index]
+			}
+		} else {
+			attributeName = c.str[attributeNameStartIndex:c.index]
+		}
 
 		if ch != '=' {
-			// If there's no =, this is a boolean attribute
-			attributes = append(attributes, attributeName, true)
+			if isRenderAttribute {
+				renderAttributes = append(renderAttributes, RenderAttribute{AttributeName: attributeName, AttributeModifier: attributeModifier})
+			} else {
+				staticAttributes = append(staticAttributes, StaticAttribute{AttributeName: attributeName})
+			}
 			continue
 		}
 
@@ -307,7 +351,11 @@ func (c *Cursor) ReadOpeningTagAttributes() []interface{} {
 		if err != nil {
 			// If we hit the end of the file before reaching an attribute value,
 			// call the value an empty string
-			attributes = append(attributes, attributeName, "")
+			if isRenderAttribute {
+				renderAttributes = append(renderAttributes, RenderAttribute{AttributeName: attributeName, AttributeModifier: attributeModifier})
+			} else {
+				staticAttributes = append(staticAttributes, StaticAttribute{AttributeName: attributeName})
+			}
 			break
 		}
 
@@ -338,7 +386,18 @@ func (c *Cursor) ReadOpeningTagAttributes() []interface{} {
 			}
 
 			attributeValue := c.str[valueStartIndex:c.index]
-			attributes = append(attributes, attributeName, attributeValue)
+			if isRenderAttribute {
+				renderAttributes = append(renderAttributes, RenderAttribute{
+					AttributeName:     attributeName,
+					AttributeModifier: attributeModifier,
+					AttributeValue:    attributeValue,
+				})
+			} else {
+				staticAttributes = append(staticAttributes, StaticAttribute{
+					AttributeName:  attributeName,
+					AttributeValue: attributeValue,
+				})
+			}
 
 			// Skip the closing quote char
 			ch, err = c.AdvanceChar()
@@ -350,19 +409,25 @@ func (c *Cursor) ReadOpeningTagAttributes() []interface{} {
 			}
 
 			attributeValue := c.str[valueStartIndex:c.index]
-			attributes = append(attributes, attributeName, attributeValue)
+			if isRenderAttribute {
+				renderAttributes = append(renderAttributes, RenderAttribute{
+					AttributeName:     attributeName,
+					AttributeModifier: attributeModifier,
+					AttributeValue:    attributeValue,
+				})
+			} else {
+				staticAttributes = append(staticAttributes, StaticAttribute{
+					AttributeName:  attributeName,
+					AttributeValue: attributeValue,
+				})
+			}
 		}
 	}
 
-	if len(attributes) == 0 {
-		// Return nil instead of an empty array to represent that there are no attributes
-		return nil
-	}
-
-	return attributes
+	return staticAttributes, renderAttributes
 }
 
-func (c *Cursor) ReadOpeningTag() (string, []interface{}, bool) {
+func (c *Cursor) ReadOpeningTag() (string, []StaticAttribute, []RenderAttribute, bool) {
 	ch, err := c.CurrentChar()
 
 	// If cursor is on the "<" char, skip it
@@ -372,7 +437,7 @@ func (c *Cursor) ReadOpeningTag() (string, []interface{}, bool) {
 
 	tagName := c.ReadTagName()
 
-	attributes := c.ReadOpeningTagAttributes()
+	staticAttributes, renderAttributes := c.ReadOpeningTagAttributes()
 
 	ch, err = c.CurrentChar()
 
@@ -384,7 +449,7 @@ func (c *Cursor) ReadOpeningTag() (string, []interface{}, bool) {
 	// Increment the cursor one last time past the end of the tag
 	c.AdvanceChar()
 
-	return tagName, attributes, isVoidElement(tagName)
+	return tagName, staticAttributes, renderAttributes, isVoidElement(tagName)
 }
 
 func (c *Cursor) ReadClosingTag() string {

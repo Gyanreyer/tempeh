@@ -12,7 +12,7 @@
     }
   },
   "scripts": {
-    "build-xml-parser": "go build -C ./src/xml-parser -o ../../bin/parse-xml ",
+    "build-template-parser": "go build -C ./src/template-parser -o ../../bin/parse-template",
     "test": "node --test"
   }
 }
