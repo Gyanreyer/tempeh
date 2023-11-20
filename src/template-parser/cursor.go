@@ -2,17 +2,20 @@ package main
 
 import (
 	"errors"
+	"strconv"
 )
 
 type RenderAttribute struct {
 	AttributeName     string `json:"name"`
 	AttributeModifier string `json:"modifier,omitempty"`
 	AttributeValue    string `json:"value,omitempty"`
+	Position          string `json:"position,omitempty"`
 }
 
 type StaticAttribute struct {
 	AttributeName  string `json:"name"`
 	AttributeValue string `json:"value,omitempty"`
+	Position       string `json:"position,omitempty"`
 }
 
 func isVoidElement(tagName string) bool {
@@ -100,6 +103,8 @@ type Cursor struct {
 	index    int
 	str      string
 	maxIndex int
+	line     int
+	column   int
 }
 
 func (c *Cursor) At(index int) (rune, error) {
@@ -121,10 +126,26 @@ func (c *Cursor) CurrentChar() (rune, error) {
 func (c *Cursor) AdvanceChar(amount ...int) (rune, error) {
 	if len(amount) > 0 {
 		c.index += amount[0]
+		c.column += amount[0]
 	} else {
 		c.index++
+		c.column++
 	}
-	return c.CurrentChar()
+
+	newChar, err := c.CurrentChar()
+
+	if err == nil {
+		if newChar == '\n' {
+			c.line++
+			c.column = 0
+		}
+	}
+
+	return newChar, err
+}
+
+func (c *Cursor) GetPosition() string {
+	return strconv.Itoa(c.line) + ":" + strconv.Itoa(c.column)
 }
 
 func (c *Cursor) SkipWhiteSpace() (rune, error) {
@@ -308,6 +329,8 @@ func (c *Cursor) ReadOpeningTagAttributes() ([]StaticAttribute, []RenderAttribut
 		}
 
 		attributeNameStartIndex := c.index
+		// Track the line/column position of the attribute for error logging
+		attributePosition := c.GetPosition()
 
 		for err == nil && isLegalTagOrAttributeNameChar(ch) {
 			if isRenderAttribute && (ch == ':') {
@@ -335,9 +358,16 @@ func (c *Cursor) ReadOpeningTagAttributes() ([]StaticAttribute, []RenderAttribut
 
 		if ch != '=' {
 			if isRenderAttribute {
-				renderAttributes = append(renderAttributes, RenderAttribute{AttributeName: attributeName, AttributeModifier: attributeModifier})
+				renderAttributes = append(renderAttributes, RenderAttribute{
+					AttributeName:     attributeName,
+					AttributeModifier: attributeModifier,
+					Position:          attributePosition,
+				})
 			} else {
-				staticAttributes = append(staticAttributes, StaticAttribute{AttributeName: attributeName})
+				staticAttributes = append(staticAttributes, StaticAttribute{
+					AttributeName: attributeName,
+					Position:      attributePosition,
+				})
 			}
 			continue
 		}
@@ -352,9 +382,15 @@ func (c *Cursor) ReadOpeningTagAttributes() ([]StaticAttribute, []RenderAttribut
 			// If we hit the end of the file before reaching an attribute value,
 			// call the value an empty string
 			if isRenderAttribute {
-				renderAttributes = append(renderAttributes, RenderAttribute{AttributeName: attributeName, AttributeModifier: attributeModifier})
+				renderAttributes = append(renderAttributes, RenderAttribute{
+					AttributeName: attributeName, AttributeModifier: attributeModifier,
+					Position: attributePosition,
+				})
 			} else {
-				staticAttributes = append(staticAttributes, StaticAttribute{AttributeName: attributeName})
+				staticAttributes = append(staticAttributes, StaticAttribute{
+					AttributeName: attributeName,
+					Position:      attributePosition,
+				})
 			}
 			break
 		}
@@ -391,11 +427,13 @@ func (c *Cursor) ReadOpeningTagAttributes() ([]StaticAttribute, []RenderAttribut
 					AttributeName:     attributeName,
 					AttributeModifier: attributeModifier,
 					AttributeValue:    attributeValue,
+					Position:          attributePosition,
 				})
 			} else {
 				staticAttributes = append(staticAttributes, StaticAttribute{
 					AttributeName:  attributeName,
 					AttributeValue: attributeValue,
+					Position:       attributePosition,
 				})
 			}
 
@@ -414,11 +452,13 @@ func (c *Cursor) ReadOpeningTagAttributes() ([]StaticAttribute, []RenderAttribut
 					AttributeName:     attributeName,
 					AttributeModifier: attributeModifier,
 					AttributeValue:    attributeValue,
+					Position:          attributePosition,
 				})
 			} else {
 				staticAttributes = append(staticAttributes, StaticAttribute{
 					AttributeName:  attributeName,
 					AttributeValue: attributeValue,
+					Position:       attributePosition,
 				})
 			}
 		}

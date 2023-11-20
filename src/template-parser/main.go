@@ -41,13 +41,12 @@ type TmphNode struct {
 	RenderAttributes []RenderAttribute `json:"renderAttributes,omitempty"`
 	Children         []*TmphNode       `json:"children,omitempty"`
 	TextContent      string            `json:"textContent,omitempty"`
+	Position         string            `json:"position,omitempty"`
 }
 
 type TmphAssetBucket struct {
-	BucketName string   `json:"bucketName"`
-	Inline     bool     `json:"inline"`
-	Scripts    []string `json:"scripts"`
-	Styles     []string `json:"styles"`
+	Scripts []string `json:"scripts,omitempty"`
+	Styles  []string `json:"styles,omitempty"`
 }
 
 type TmphAssetBucketMap map[string]*TmphAssetBucket
@@ -55,6 +54,7 @@ type TmphAssetBucketMap map[string]*TmphAssetBucket
 type ComponentImport struct {
 	ImportName string `json:"importName,omitempty"`
 	Path       string `json:"path"`
+	Position   string `json:"position,omitempty"`
 }
 
 type ParsedTemplateData struct {
@@ -66,6 +66,7 @@ type ParsedTemplateData struct {
 	PropTypesJSDoc   string                         `json:"propTypesJSDoc,omitempty"`
 	InlineComponents map[string]*ParsedTemplateData `json:"inlineComponents,omitempty"`
 	NodeTree         []*TmphNode                    `json:"-"`
+	Position         string                         `json:"position,omitempty"`
 }
 
 const DEFAULT_BUCKET_NAME = "default"
@@ -89,7 +90,7 @@ func main() {
 
 	fileStr := string(fileBytes)
 
-	cursor := Cursor{index: 0, str: fileStr, maxIndex: len(fileStr) - 1}
+	cursor := Cursor{index: 0, str: fileStr, maxIndex: len(fileStr) - 1, line: 1, column: 1}
 
 	rootTemplateData := ParsedTemplateData{
 		Nodes:            make([]*TmphNode, 0),
@@ -100,6 +101,7 @@ func main() {
 		PropTypesJSDoc:   "",
 		InlineComponents: make(map[string]*ParsedTemplateData, 0),
 		NodeTree:         make([]*TmphNode, 0),
+		Position:         cursor.GetPosition(),
 	}
 
 	templateDataTree := []*ParsedTemplateData{&rootTemplateData}
@@ -126,9 +128,14 @@ func main() {
 			childIndex = len(currentNode.Children)
 		}
 
+		startPosition := cursor.GetPosition()
 		textContent, isClosingTag := cursor.ReadUntilTag(shouldPreserveWhitespace, childIndex)
+
 		if textContent != "" {
-			newTextNode := TmphNode{TextContent: textContent}
+			newTextNode := TmphNode{
+				TextContent: textContent,
+				Position:    startPosition,
+			}
 
 			if currentNode == nil {
 				currentTemplateData.Nodes = append(currentTemplateData.Nodes, &newTextNode)
@@ -173,6 +180,7 @@ func main() {
 
 			currentTemplateData.NodeTree = currentTemplateData.NodeTree[:nodeTreeLen]
 		} else {
+			tagStartPosition := cursor.GetPosition()
 			openedTagName, staticAttributes, renderAttributes, isVoidElement := cursor.ReadOpeningTag()
 
 			newNode := &TmphNode{
@@ -180,6 +188,7 @@ func main() {
 				StaticAttributes: staticAttributes,
 				RenderAttributes: renderAttributes,
 				Children:         nil,
+				Position:         tagStartPosition,
 			}
 
 			if isVoidElement {
@@ -208,6 +217,7 @@ func main() {
 								NamedSlots:       make([]string, 0),
 								ComponentImports: make([]ComponentImport, 0),
 								PropTypesJSDoc:   "",
+								Position:         tagStartPosition,
 							}
 
 							if _, ok := currentTemplateData.InlineComponents[componentName]; ok {
@@ -225,13 +235,21 @@ func main() {
 					{
 						elementTextContent := cursor.ReadRawTagTextContent(openedTagName, false)
 						if elementTextContent != "" {
-							textNode := TmphNode{TextContent: elementTextContent}
-							newNode.Children = append(newNode.Children, &textNode)
-
 							rawAttribute := getRenderAttribute(renderAttributes, "raw")
 
 							if rawAttribute == nil {
 								shouldSkipNode = true
+
+								if openedTagName == "script" {
+									propTypesAttribute := getRenderAttribute(renderAttributes, "types")
+									if propTypesAttribute != nil {
+										// If a #types attribute is present, we'll use the script contents
+										// as the prop types JSDoc for the component
+										currentTemplateData.PropTypesJSDoc = elementTextContent
+										break
+									}
+								}
+
 								// If the script or style doesn't have a bucket attribute, we'll use the default bucket
 								bucketName := DEFAULT_BUCKET_NAME
 
@@ -243,10 +261,8 @@ func main() {
 								// Create an asset bucket for the bucket name if one doesn't exist
 								if _, ok := currentTemplateData.Assets[bucketName]; !ok {
 									currentTemplateData.Assets[bucketName] = &TmphAssetBucket{
-										BucketName: bucketName,
-										Inline:     false,
-										Scripts:    make([]string, 0),
-										Styles:     make([]string, 0),
+										Scripts: make([]string, 0),
+										Styles:  make([]string, 0),
 									}
 								}
 
@@ -256,6 +272,13 @@ func main() {
 								} else {
 									currentTemplateData.Assets[bucketName].Styles = append(currentTemplateData.Assets[bucketName].Styles, elementTextContent)
 								}
+							} else {
+								// If the script or style has a raw attribute, we'll just add it to the node tree
+								textNode := TmphNode{
+									TextContent: elementTextContent,
+									Position:    tagStartPosition,
+								}
+								newNode.Children = append(newNode.Children, &textNode)
 							}
 						}
 					}
@@ -277,6 +300,7 @@ func main() {
 									ComponentImport{
 										ImportName: importName,
 										Path:       hrefAttribute.AttributeValue,
+										Position:   tagStartPosition,
 									},
 								)
 							}

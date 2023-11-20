@@ -34,9 +34,26 @@ import { resolveRelativePath } from "../utils/resolveRelativePath.js";
  */
 
 /**
+ * @typedef {Object} ComponentImport
+ * @property {string} [importName] - The name that the component is imported as, if a #as attribute was set
+ * @property {string} importPath - The path to the component file
+ */
+
+/**
+ * @typedef {Object} AssetBucket
+ * @property {string[]} [scripts]
+ * @property {string[]} [styles]
+ */
+
+/**
  * @typedef {Object} ParsedTemplateResponse
  * @property {TmphNode[]} nodes
- * @property {Object} assets
+ * @property {Record<string, AssetBucket>} assets
+ * @property {boolean} hasDefaultSlot
+ * @property {string[]} [namedSlots]
+ * @property {ComponentImport[]} [componentImports]
+ * @property {string} [propTypesJSDoc]
+ * @property {Record<string, Omit<ParsedTemplateResponse, "inlineComponents">>} [inlineComponents]
  */
 
 const parserBinaryPath = resolveRelativePath(

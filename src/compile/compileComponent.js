@@ -99,9 +99,8 @@ export async function compileComponent(componentPath, skipCache = false) {
     4
   )}`;
 
-  const { nodes: rootNodes, assets: componentAssets } = await parseTemplate(
-    componentFileBuffer
-  );
+  const parsedTemplateData = await parseTemplate(componentFileBuffer);
+  const rootNodes = parsedTemplateData.nodes;
 
   for (const node of rootNodes) {
     if ("tagName" in node) {
@@ -119,8 +118,8 @@ export async function compileComponent(componentPath, skipCache = false) {
     sourceFilePath: componentPath,
     usesProps: false,
     isAsync: false,
-    hasDefaultSlot: false,
-    namedSlots: null,
+    hasDefaultSlot: parsedTemplateData.hasDefaultSlot,
+    namedSlots: parsedTemplateData.namedSlots,
   });
   // const componentAssets = Object.preventExtensions({
   //   componentImports: null,
@@ -131,7 +130,7 @@ export async function compileComponent(componentPath, skipCache = false) {
   //   inlineScripts: null,
   // });
 
-  gatherComponentMeta(rootNodes, meta);
+  // gatherComponentMeta(rootNodes, meta);
 
   /** @type {Record<string, string>} */
   const imports = {};
