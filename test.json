@@ -1,0 +1,85 @@
+{
+  "nodes": [
+    {
+      "tagName": "ul",
+      "children": [
+        {
+          "tagName": "ListItem",
+          "renderAttributes": [
+            {
+              "name": "for",
+              "modifier": "item",
+              "value": "items"
+            },
+            {
+              "name": "attr",
+              "modifier": "name",
+              "value": "item.name"
+            },
+            {
+              "name": "text",
+              "value": "item.value"
+            }
+          ]
+        }
+      ]
+    }
+  ],
+  "hasDefaultSlot": false,
+  "inlineComponents": {
+    "ListItem": {
+      "nodes": [
+        {
+          "tagName": "li",
+          "children": [
+            {
+              "tagName": "strong",
+              "renderAttributes": [
+                {
+                  "name": "text",
+                  "value": "`${name}:`"
+                }
+              ]
+            },
+            {
+              "textContent": " "
+            },
+            {
+              "tagName": "slot"
+            }
+          ]
+        }
+      ],
+      "hasDefaultSlot": true
+    },
+    "NestedComponent": {
+      "nodes": [
+        {
+          "tagName": "div",
+          "children": [
+            {
+              "textContent": "Why would you do this?!"
+            }
+          ]
+        }
+      ],
+      "hasDefaultSlot": false
+    },
+    "WhackyComponent": {
+      "nodes": [
+        {
+          "tagName": "div",
+          "children": [
+            {
+              "tagName": "InnerComponent"
+            },
+            {
+              "textContent": " "
+            }
+          ]
+        }
+      ],
+      "hasDefaultSlot": false
+    }
+  }
+}

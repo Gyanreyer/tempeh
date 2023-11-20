@@ -1,0 +1,17 @@
+<ul>
+  <ListItem #for:item="items" :name="item.name" #text="item.value"></ListItem>
+</ul>
+<template #component="ListItem">
+  <li>
+    <strong #text="`${name}:`"></strong>
+    <slot></slot>
+  </li>
+</template>
+<template #component="WhackyComponent">
+  <div>
+    <InnerComponent></InnerComponent>
+    <template #component="NestedComponent">
+      <div>Why would you do this?!</div>
+    </template>
+  </div>
+</template>

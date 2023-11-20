@@ -4,7 +4,7 @@ import { createHash } from "node:crypto";
 import { createReadStream } from "node:fs";
 import readline from "node:readline/promises";
 
-import { parseXML } from "./parseXML.js";
+import { parseTemplate } from "./parseTemplate.js";
 import {
   gatherComponentMeta,
   cachedMetaCommentStart,
@@ -16,7 +16,7 @@ import { stringifyObjectForRender } from "./stringifyObjectForRender.js";
 import { extractComponentName } from "./extractComponentName.js";
 import processCSS from "./processCSS.js";
 
-/** @typedef {import("./parseXML.js").TmphNode} TmphNode */
+/** @typedef {import("./parseTemplate.js").TmphNode} TmphNode */
 /**
  * @typedef {import("./gatherComponentMeta.js").Meta} Meta
  * @typedef {import("./gatherComponentMeta.js").ComponentAssets} ComponentAssets
@@ -99,12 +99,18 @@ export async function compileComponent(componentPath, skipCache = false) {
     4
   )}`;
 
-  const rootNodes = await parseXML(componentFileBuffer);
+  const { nodes: rootNodes, assets: componentAssets } = await parseTemplate(
+    componentFileBuffer
+  );
 
   for (const node of rootNodes) {
-    if (typeof node !== "string") {
-      node.attributes ??= [];
-      node.attributes.push("data-scid", scopedComponentID);
+    if ("tagName" in node) {
+      // Add a data-scid attribute to each root node of the component
+      node.staticAttributes ??= [];
+      node.staticAttributes.push({
+        name: "data-scid",
+        value: scopedComponentID,
+      });
     }
   }
 
@@ -116,17 +122,16 @@ export async function compileComponent(componentPath, skipCache = false) {
     hasDefaultSlot: false,
     namedSlots: null,
   });
-  /** @type {ComponentAssets} */
-  const componentAssets = Object.preventExtensions({
-    componentImports: null,
-    inlineComponents: null,
-    propTypesJsDoc: null,
-    assetBuckets: null,
-    inlineStylesheets: null,
-    inlineScripts: null,
-  });
+  // const componentAssets = Object.preventExtensions({
+  //   componentImports: null,
+  //   inlineComponents: null,
+  //   propTypesJsDoc: null,
+  //   assetBuckets: null,
+  //   inlineStylesheets: null,
+  //   inlineScripts: null,
+  // });
 
-  gatherComponentMeta(rootNodes, meta, componentAssets);
+  gatherComponentMeta(rootNodes, meta);
 
   /** @type {Record<string, string>} */
   const imports = {};

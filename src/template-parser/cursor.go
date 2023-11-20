@@ -320,7 +320,7 @@ func (c *Cursor) ReadOpeningTagAttributes() ([]StaticAttribute, []RenderAttribut
 		var attributeModifier string
 
 		if isDynamicAttribute {
-			attributeName = "#attr"
+			attributeName = "attr"
 			attributeModifier = c.str[attributeNameStartIndex:c.index]
 		} else if isRenderAttribute {
 			if renderAttributeModifierIndex != -1 {

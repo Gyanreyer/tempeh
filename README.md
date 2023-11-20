@@ -192,50 +192,6 @@ You may also spread an object's key/value pairs as attributes on an element usin
 <div class="hello" id="my-id" data-testid="test-id"></div>
 ```
 
-### Directly passing through attributes with `attrs`
-
-Alternatively, you may directly set attributes on the component's root element without
-having to filter anything through `props` first by using `attrs`.
-
-```html
-<!-- Div.tmph.html -->
-<div></div>
-
-<!-- Div.render({
-  attrs: {
-    class: "disabled",
-    "data-testid": "test-id",
-  },
-}) -->
-```
-
-#### `#root`
-
-Some components may not have a clear root element which `attrs` should be set on. In these cases, you may define a root element with a `#root` attribute.
-
-```html
-<!-- ModalButton.tmph.html -->
-<button onclick="...">I am a button which opens a dialog</button>
-<dialog>I am a dialog</dialog>
-```
-
-If you attempt to set `attrs` when rendering the above component, it will throw an error because Tempeh does not know where to place those attributes. Applying a `#root` will resolve the issue:
-
-```html
-<!-- ModalButton.tmph.html -->
-<button #root onclick="...">I am a button which opens a dialog</button>
-<dialog>I am a dialog</dialog>
-
-<!-- ModalButton.render({
-  attrs: {
-    disabled: true,
-    "aria-hidden": "disabled-btn",
-  },
-}) -->
-<button onclick="..." disabled data-testid="disabled-btn">I am a button which opens a dialog</button>
-<dialog>I am a dialog</dialog>
-```
-
 ### Attributes tagged with a `$` are reserved for special Tempeh functions which can dynamically modify an element's content
 
 #### `$textContent`
@@ -761,17 +717,17 @@ Each `.tmph.html` file can be thought of as a Tempeh component which can be impo
 </ul>
 ```
 
-### Declaring sub-components in the same file with `#component`
+### Declaring sub-components in the same file with `$component`
 
-You can declare sub-components with a `<template>` tag with a `#component` flag. Sub-components can be re-used within
+You can declare sub-components with a `<template>` tag with a `$component` flag. Sub-components can be re-used within
 the component file but can't be imported by other component files. This can be useful if you wish to encapsulate a complex fragment
 which gets re-used in multiple places throughout the component.
 
-The `#component` attribute should take a name for the component. This component name can then be referenced throughout the template.
+The `$component` attribute should take a name for the component. This component name can then be referenced throughout the template.
 
 ```html
 <!-- List.tmph.html -->
-<template #component="ListItem">
+<template $component="ListItem">
   <li>
     <p $textContent="props.item.name"></p>
   </li>

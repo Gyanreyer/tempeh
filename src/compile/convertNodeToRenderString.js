@@ -5,7 +5,7 @@ import { getNodeAttributeValue } from "./getNodeAttributeValue.js";
 import { stringifyObjectForRender } from "./stringifyObjectForRender.js";
 import { makeDynamicRenderStringContent } from "./makeDynamicRenderStringContent.js";
 
-/** @typedef {import("./parseXML.js").TmphNode} TmphNode */
+/** @typedef {import("./parseTemplate.js").TmphNode} TmphNode */
 /** @typedef {import("./gatherComponentMeta.js").Meta} Meta */
 
 // HTML tag names that don't have closing tags

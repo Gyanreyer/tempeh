@@ -1,4 +1,4 @@
-/** @typedef {import("./parseXML").TmphNode} TmphNode */
+/** @typedef {import("./parseTemplate").TmphNode} TmphNode */
 
 /**
  * Looks up the value of a node's attribute by name.

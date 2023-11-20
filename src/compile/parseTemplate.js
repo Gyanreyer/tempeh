@@ -4,18 +4,43 @@ import { deepPreventExtensions } from "../utils/deepPreventExtensions.js";
 import { resolveRelativePath } from "../utils/resolveRelativePath.js";
 
 /**
- * @typedef {Object} TmphNode
- * @property {string|null} tagName
- * @property {Array<TmphNode | string>|null} children
- * @property {Array<string|true>|null} attributes
+ * @typedef {Object} TmphAttribute
+ * @property {string} name
+ * @property {string} [value]
  */
 
 /**
- * @typedef {Array<TmphNode | string>} RootNodeArray
+ * @typedef {Object} TmphRenderAttribute
+ * @property {string} name
+ * @property {string} [value]
+ * @property {string} [modifier]
+ */
+
+/**
+ * @typedef {Object} TmphTextNode
+ * @property {string} textContent
+ */
+
+/**
+ * @typedef {Object} TmphElementNode
+ * @property {string} tagName
+ * @property {TmphAttribute[]} [staticAttributes]
+ * @property {TmphRenderAttribute[]} [renderAttributes]
+ * @property {TmphNode[]} [children]
+ */
+
+/**
+ * @typedef {TmphTextNode | TmphElementNode} TmphNode
+ */
+
+/**
+ * @typedef {Object} ParsedTemplateResponse
+ * @property {TmphNode[]} nodes
+ * @property {Object} assets
  */
 
 const parserBinaryPath = resolveRelativePath(
-  "../../bin/parse-xml",
+  "../../bin/parse-template",
   import.meta
 );
 
@@ -23,11 +48,11 @@ const parserBinaryPath = resolveRelativePath(
  * Takes the path to a .tmph.html file and parses it into an array of TmphNodes
  * @param {Buffer} fileBuffer
  */
-export async function parseXML(fileBuffer) {
+export async function parseTemplate(fileBuffer) {
   // Prevent extension on all items in the node tree. This means that items can be deleted
   // or modified, but never added. This should hopefully reduce memory usage.
   return deepPreventExtensions(
-    await /** @type {Promise<RootNodeArray>} */ (
+    await /** @type {Promise<ParsedTemplateResponse>} */ (
       new Promise((resolve, reject) => {
         // Concatentating buffers requires an array,
         // so we'll create a re-usable one at the top to avoid

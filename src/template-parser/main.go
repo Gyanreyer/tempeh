@@ -6,21 +6,41 @@ import (
 	"os"
 )
 
+func getLast[V interface{}](arr []*V) *V {
+	arrLen := len(arr)
+	if arrLen == 0 {
+		return nil
+	}
+
+	return arr[arrLen-1]
+}
+
+func getStaticAttribute(staticAttributes []StaticAttribute, attributeName string) *StaticAttribute {
+	for _, attribute := range staticAttributes {
+		if attribute.AttributeName == attributeName {
+			return &attribute
+		}
+	}
+
+	return nil
+}
+
+func getRenderAttribute(renderAttributes []RenderAttribute, attributeName string) *RenderAttribute {
+	for _, attribute := range renderAttributes {
+		if attribute.AttributeName == attributeName {
+			return &attribute
+		}
+	}
+
+	return nil
+}
+
 type TmphNode struct {
 	TagName          string            `json:"tagName,omitempty"`
 	StaticAttributes []StaticAttribute `json:"staticAttributes,omitempty"`
 	RenderAttributes []RenderAttribute `json:"renderAttributes,omitempty"`
 	Children         []*TmphNode       `json:"children,omitempty"`
 	TextContent      string            `json:"textContent,omitempty"`
-}
-
-func getCurrentNode(nodeTree []*TmphNode) *TmphNode {
-	nodeTreeLen := len(nodeTree)
-	if nodeTreeLen == 0 {
-		return nil
-	}
-
-	return nodeTree[nodeTreeLen-1]
 }
 
 type TmphAssetBucket struct {
@@ -32,10 +52,20 @@ type TmphAssetBucket struct {
 
 type TmphAssetBucketMap map[string]*TmphAssetBucket
 
-type ReturnData struct {
-	Nodes  []*TmphNode        `json:"nodes"`
-	Assets TmphAssetBucketMap `json:"assets"`
-	// TODO: SubComponents
+type ComponentImport struct {
+	ImportName string `json:"importName,omitempty"`
+	Path       string `json:"path"`
+}
+
+type ParsedTemplateData struct {
+	Nodes            []*TmphNode                    `json:"nodes"`
+	Assets           TmphAssetBucketMap             `json:"assets,omitempty"`
+	HasDefaultSlot   bool                           `json:"hasDefaultSlot"`
+	NamedSlots       []string                       `json:"namedSlots,omitempty"`
+	ComponentImports []ComponentImport              `json:"componentImports,omitempty"`
+	PropTypesJSDoc   string                         `json:"propTypesJSDoc,omitempty"`
+	InlineComponents map[string]*ParsedTemplateData `json:"inlineComponents,omitempty"`
+	NodeTree         []*TmphNode                    `json:"-"`
 }
 
 const DEFAULT_BUCKET_NAME = "default"
@@ -61,19 +91,29 @@ func main() {
 
 	cursor := Cursor{index: 0, str: fileStr, maxIndex: len(fileStr) - 1}
 
-	nodeTree := make([]*TmphNode, 0)
+	rootTemplateData := ParsedTemplateData{
+		Nodes:            make([]*TmphNode, 0),
+		Assets:           make(TmphAssetBucketMap),
+		HasDefaultSlot:   false,
+		NamedSlots:       make([]string, 0),
+		ComponentImports: make([]ComponentImport, 0),
+		PropTypesJSDoc:   "",
+		InlineComponents: make(map[string]*ParsedTemplateData, 0),
+		NodeTree:         make([]*TmphNode, 0),
+	}
 
-	returnData := ReturnData{Nodes: make([]*TmphNode, 0), Assets: make(TmphAssetBucketMap)}
+	templateDataTree := []*ParsedTemplateData{&rootTemplateData}
 
 	for cursor.index < cursor.maxIndex {
-		currentNode := getCurrentNode(nodeTree)
+		currentTemplateData := getLast(templateDataTree)
+		currentNode := getLast(currentTemplateData.NodeTree)
 
 		shouldPreserveWhitespace := false
 
-		nodeTreeLen := len(nodeTree)
+		nodeTreeLen := len(currentTemplateData.NodeTree)
 		visitNodeIndex := nodeTreeLen - 1
 		for visitNodeIndex >= 0 {
-			tagName := nodeTree[visitNodeIndex].TagName
+			tagName := currentTemplateData.NodeTree[visitNodeIndex].TagName
 			if tagName == "pre" || tagName == "textarea" {
 				shouldPreserveWhitespace = true
 				break
@@ -91,7 +131,7 @@ func main() {
 			newTextNode := TmphNode{TextContent: textContent}
 
 			if currentNode == nil {
-				returnData.Nodes = append(returnData.Nodes, &newTextNode)
+				currentTemplateData.Nodes = append(currentTemplateData.Nodes, &newTextNode)
 			} else {
 				currentNode.Children = append(currentNode.Children, &newTextNode)
 			}
@@ -110,9 +150,9 @@ func main() {
 
 				nodeTreeLen -= 1
 				if nodeTreeLen >= 1 {
-					currentNode = nodeTree[nodeTreeLen-1]
+					currentNode = currentTemplateData.NodeTree[nodeTreeLen-1]
 				} else if currentNode != nil {
-					returnData.Nodes = append(returnData.Nodes, currentNode)
+					currentTemplateData.Nodes = append(currentTemplateData.Nodes, currentNode)
 				}
 
 				if closingNodeTagName == closedTagName {
@@ -122,7 +162,16 @@ func main() {
 				}
 			}
 
-			nodeTree = nodeTree[:nodeTreeLen]
+			if nodeTreeLen == 0 && closedTagName == "template" {
+				templateDataTreeLen := len(templateDataTree)
+				if templateDataTreeLen <= 1 {
+					panic("Encountered unexpected closing template tag")
+				}
+				// Drop off the template data for the template we just closed
+				templateDataTree = templateDataTree[:templateDataTreeLen-1]
+			}
+
+			currentTemplateData.NodeTree = currentTemplateData.NodeTree[:nodeTreeLen]
 		} else {
 			openedTagName, staticAttributes, renderAttributes, isVoidElement := cursor.ReadOpeningTag()
 
@@ -136,81 +185,130 @@ func main() {
 			if isVoidElement {
 				// If we're at the root node, write it out
 				if currentNode == nil {
-					returnData.Nodes = append(returnData.Nodes, newNode)
+					currentTemplateData.Nodes = append(currentTemplateData.Nodes, newNode)
 				} else {
 					currentNode.Children = append(currentNode.Children, newNode)
 				}
 			} else {
-				if openedTagName == "script" || openedTagName == "style" {
+				shouldSkipNode := false
 
-					elementTextContent := cursor.ReadRawTagTextContent(openedTagName, false)
-					if elementTextContent != "" {
-						textNode := TmphNode{TextContent: elementTextContent}
-						newNode.Children = append(newNode.Children, &textNode)
+				switch openedTagName {
+				case "template":
+					{
+						componentAttribute := getRenderAttribute(renderAttributes, "component")
+						if componentAttribute != nil && componentAttribute.AttributeValue != "" {
+							shouldSkipNode = true
+							componentName := componentAttribute.AttributeValue
 
-						isRaw := false
-						// If the script or style doesn't have a bucket attribute, we'll use the default bucket
-						bucketName := DEFAULT_BUCKET_NAME
-
-						renderAttributeLen := len(newNode.RenderAttributes)
-						for i := 0; i < renderAttributeLen; i += 2 {
-							attribute := newNode.RenderAttributes[i]
-							attributeName := attribute.AttributeName
-							if attributeName == "#raw" {
-								isRaw = true
-								// Raw scripts and styles should be rendered as-is
-								newNode.StaticAttributes = append(newNode.StaticAttributes[:i], newNode.StaticAttributes[i+2:]...)
-								break
-							} else if attributeName == "#bucket" {
-								// If the script or style has a #bucket attribute, use that as the bucket name
-								attributeValue := attribute.AttributeValue
-								if len(attributeValue) > 0 {
-									bucketName = attributeValue
-								}
-								break
+							// Create a new template data object for the component
+							componentTemplateData := ParsedTemplateData{
+								Nodes:            make([]*TmphNode, 0),
+								Assets:           make(TmphAssetBucketMap),
+								HasDefaultSlot:   false,
+								NamedSlots:       make([]string, 0),
+								ComponentImports: make([]ComponentImport, 0),
+								PropTypesJSDoc:   "",
 							}
+
+							if _, ok := currentTemplateData.InlineComponents[componentName]; ok {
+								panic("Duplicate inline component name: " + componentName)
+							}
+
+							// Add the component template data to the root template data's inline components
+							// We can go straight to the root because nested inline components are all hoisted to the top
+							rootTemplateData.InlineComponents[componentName] = &componentTemplateData
+							templateDataTree = append(templateDataTree, &componentTemplateData)
 						}
+					}
+				case "script":
+				case "style":
+					{
+						elementTextContent := cursor.ReadRawTagTextContent(openedTagName, false)
+						if elementTextContent != "" {
+							textNode := TmphNode{TextContent: elementTextContent}
+							newNode.Children = append(newNode.Children, &textNode)
 
-						if isRaw {
-							if currentNode == nil {
-								returnData.Nodes = append(returnData.Nodes, newNode)
-							} else {
-								currentNode.Children = append(currentNode.Children, newNode)
-							}
-						} else {
-							// Create an asset bucket for the bucket name if one doesn't exist
-							if _, ok := returnData.Assets[bucketName]; !ok {
-								returnData.Assets[bucketName] = &TmphAssetBucket{
-									BucketName: bucketName,
-									Inline:     false,
-									Scripts:    make([]string, 0),
-									Styles:     make([]string, 0),
+							rawAttribute := getRenderAttribute(renderAttributes, "raw")
+
+							if rawAttribute == nil {
+								shouldSkipNode = true
+								// If the script or style doesn't have a bucket attribute, we'll use the default bucket
+								bucketName := DEFAULT_BUCKET_NAME
+
+								bucketNameAttribute := getRenderAttribute(renderAttributes, "bucket")
+								if bucketNameAttribute != nil && bucketNameAttribute.AttributeValue != "" {
+									bucketName = bucketNameAttribute.AttributeValue
 								}
-							}
 
-							// Add the script or style to the asset bucket
-							if openedTagName == "script" {
-								returnData.Assets[bucketName].Scripts = append(returnData.Assets[bucketName].Scripts, elementTextContent)
-							} else {
-								returnData.Assets[bucketName].Styles = append(returnData.Assets[bucketName].Styles, elementTextContent)
+								// Create an asset bucket for the bucket name if one doesn't exist
+								if _, ok := currentTemplateData.Assets[bucketName]; !ok {
+									currentTemplateData.Assets[bucketName] = &TmphAssetBucket{
+										BucketName: bucketName,
+										Inline:     false,
+										Scripts:    make([]string, 0),
+										Styles:     make([]string, 0),
+									}
+								}
+
+								// Add the script or style to the asset bucket
+								if openedTagName == "script" {
+									currentTemplateData.Assets[bucketName].Scripts = append(currentTemplateData.Assets[bucketName].Scripts, elementTextContent)
+								} else {
+									currentTemplateData.Assets[bucketName].Styles = append(currentTemplateData.Assets[bucketName].Styles, elementTextContent)
+								}
 							}
 						}
 					}
-				} else {
+				case "link":
+					{
+						relAttribute := getStaticAttribute(staticAttributes, "rel")
+						if relAttribute != nil && relAttribute.AttributeValue == "import" {
+							shouldSkipNode = true
+							hrefAttribute := getStaticAttribute(staticAttributes, "href")
+							if hrefAttribute != nil && hrefAttribute.AttributeValue != "" {
+								importName := ""
+								importAsNameAttribute := getStaticAttribute(staticAttributes, "as")
+								if importAsNameAttribute != nil {
+									importName = importAsNameAttribute.AttributeValue
+								}
+
+								currentTemplateData.ComponentImports = append(
+									currentTemplateData.ComponentImports,
+									ComponentImport{
+										ImportName: importName,
+										Path:       hrefAttribute.AttributeValue,
+									},
+								)
+							}
+						}
+					}
+				case "slot":
+					{
+						slotNameAttribute := getStaticAttribute(staticAttributes, "name")
+
+						if slotNameAttribute != nil && slotNameAttribute.AttributeValue != "" {
+							currentTemplateData.NamedSlots = append(currentTemplateData.NamedSlots, slotNameAttribute.AttributeValue)
+						} else {
+							currentTemplateData.HasDefaultSlot = true
+						}
+					}
+				}
+
+				if !shouldSkipNode {
 					if currentNode != nil {
 						currentNode.Children = append(currentNode.Children, newNode)
 					}
 
 					newNode.Children = make([]*TmphNode, 0)
 					currentNode = newNode
-					nodeTree = append(nodeTree, currentNode)
+					currentTemplateData.NodeTree = append(currentTemplateData.NodeTree, currentNode)
 					nodeTreeLen++
 				}
 			}
 		}
 	}
 
-	returnJSON, err := json.Marshal(returnData)
+	returnJSON, err := json.Marshal(rootTemplateData)
 	if err != nil {
 		panic(err)
 	}

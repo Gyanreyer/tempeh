@@ -5,7 +5,7 @@ import {
   removeNodeAttribute,
 } from "./getNodeAttributeValue.js";
 
-/** @typedef {import("./parseXML.js").TmphNode} TmphNode */
+/** @typedef {import("./parseTemplate.js").TmphNode} TmphNode */
 
 /**
  * @typedef {Object} Meta
