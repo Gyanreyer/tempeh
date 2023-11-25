@@ -41,12 +41,23 @@ type TmphNode struct {
 	RenderAttributes []RenderAttribute `json:"renderAttributes,omitempty"`
 	Children         []*TmphNode       `json:"children,omitempty"`
 	TextContent      string            `json:"textContent,omitempty"`
-	Position         string            `json:"position,omitempty"`
+	Position         string            `json:"position"`
+}
+
+type AssetBucketStyle struct {
+	Content  string `json:"content"`
+	Position string `json:"position"`
+}
+
+type AssetBucketScript struct {
+	Content  string `json:"content"`
+	Scope    string `json:"scope"`
+	Position string `json:"position"`
 }
 
 type TmphAssetBucket struct {
-	Scripts []string `json:"scripts,omitempty"`
-	Styles  []string `json:"styles,omitempty"`
+	Scripts []AssetBucketScript `json:"scripts,omitempty"`
+	Styles  []AssetBucketStyle  `json:"styles,omitempty"`
 }
 
 type TmphAssetBucketMap map[string]*TmphAssetBucket
@@ -54,7 +65,7 @@ type TmphAssetBucketMap map[string]*TmphAssetBucket
 type ComponentImport struct {
 	ImportName string `json:"importName,omitempty"`
 	Path       string `json:"path"`
-	Position   string `json:"position,omitempty"`
+	Position   string `json:"position"`
 }
 
 type ParsedTemplateData struct {
@@ -66,7 +77,7 @@ type ParsedTemplateData struct {
 	PropTypesJSDoc   string                         `json:"propTypesJSDoc,omitempty"`
 	InlineComponents map[string]*ParsedTemplateData `json:"inlineComponents,omitempty"`
 	NodeTree         []*TmphNode                    `json:"-"`
-	Position         string                         `json:"position,omitempty"`
+	Position         string                         `json:"position"`
 }
 
 const DEFAULT_BUCKET_NAME = "default"
@@ -192,7 +203,6 @@ func main() {
 			}
 
 			if isVoidElement {
-				// If we're at the root node, write it out
 				if currentNode == nil {
 					currentTemplateData.Nodes = append(currentTemplateData.Nodes, newNode)
 				} else {
@@ -203,127 +213,192 @@ func main() {
 
 				switch openedTagName {
 				case "template":
-					{
-						componentAttribute := getRenderAttribute(renderAttributes, "component")
-						if componentAttribute != nil && componentAttribute.AttributeValue != "" {
-							shouldSkipNode = true
-							componentName := componentAttribute.AttributeValue
+					componentAttribute := getRenderAttribute(renderAttributes, "component")
+					if componentAttribute != nil && componentAttribute.AttributeValue != "" {
+						shouldSkipNode = true
+						componentName := componentAttribute.AttributeValue
 
-							// Create a new template data object for the component
-							componentTemplateData := ParsedTemplateData{
-								Nodes:            make([]*TmphNode, 0),
-								Assets:           make(TmphAssetBucketMap),
-								HasDefaultSlot:   false,
-								NamedSlots:       make([]string, 0),
-								ComponentImports: make([]ComponentImport, 0),
-								PropTypesJSDoc:   "",
-								Position:         tagStartPosition,
-							}
-
-							if _, ok := currentTemplateData.InlineComponents[componentName]; ok {
-								panic("Duplicate inline component name: " + componentName)
-							}
-
-							// Add the component template data to the root template data's inline components
-							// We can go straight to the root because nested inline components are all hoisted to the top
-							rootTemplateData.InlineComponents[componentName] = &componentTemplateData
-							templateDataTree = append(templateDataTree, &componentTemplateData)
+						// Create a new template data object for the component
+						componentTemplateData := ParsedTemplateData{
+							Nodes:            make([]*TmphNode, 0),
+							Assets:           make(TmphAssetBucketMap),
+							HasDefaultSlot:   false,
+							NamedSlots:       make([]string, 0),
+							ComponentImports: make([]ComponentImport, 0),
+							PropTypesJSDoc:   "",
+							Position:         tagStartPosition,
 						}
+
+						if _, ok := currentTemplateData.InlineComponents[componentName]; ok {
+							panic("Duplicate inline component name: " + componentName)
+						}
+
+						// Add the component template data to the root template data's inline components
+						// We can go straight to the root because nested inline components are all hoisted to the top
+						rootTemplateData.InlineComponents[componentName] = &componentTemplateData
+						templateDataTree = append(templateDataTree, &componentTemplateData)
 					}
 				case "script":
-				case "style":
-					{
-						elementTextContent := cursor.ReadRawTagTextContent(openedTagName, false)
-						if elementTextContent != "" {
-							rawAttribute := getRenderAttribute(renderAttributes, "raw")
+					shouldSkipNode = true
 
-							if rawAttribute == nil {
-								shouldSkipNode = true
+					elementTextContent, tagContentsStartPosition := cursor.ReadRawTagTextContent(openedTagName, false)
+					textNode := TmphNode{
+						TextContent: elementTextContent,
+						Position:    tagContentsStartPosition,
+					}
+					newNode.Children = append(make([]*TmphNode, 0), &textNode)
 
-								if openedTagName == "script" {
-									propTypesAttribute := getRenderAttribute(renderAttributes, "types")
-									if propTypesAttribute != nil {
-										// If a #types attribute is present, we'll use the script contents
-										// as the prop types JSDoc for the component
-										currentTemplateData.PropTypesJSDoc = elementTextContent
-										break
-									}
-								}
+					rawAttribute := getRenderAttribute(renderAttributes, "raw")
 
-								// If the script or style doesn't have a bucket attribute, we'll use the default bucket
-								bucketName := DEFAULT_BUCKET_NAME
+					if rawAttribute != nil {
+						if currentNode != nil {
+							currentNode.Children = append(currentNode.Children, newNode)
+						} else {
+							currentTemplateData.Nodes = append(currentTemplateData.Nodes, newNode)
+						}
+						break
+					}
 
-								bucketNameAttribute := getRenderAttribute(renderAttributes, "bucket")
-								if bucketNameAttribute != nil && bucketNameAttribute.AttributeValue != "" {
-									bucketName = bucketNameAttribute.AttributeValue
-								}
+					if len(elementTextContent) == 0 {
+						break
+					}
 
-								// Create an asset bucket for the bucket name if one doesn't exist
-								if _, ok := currentTemplateData.Assets[bucketName]; !ok {
-									currentTemplateData.Assets[bucketName] = &TmphAssetBucket{
-										Scripts: make([]string, 0),
-										Styles:  make([]string, 0),
-									}
-								}
+					isRenderScriptAttribute := getRenderAttribute(renderAttributes, "render")
+					if isRenderScriptAttribute != nil {
+						if currentNode != nil {
+							currentNode.Children = append(currentNode.Children, newNode)
+						} else {
+							currentTemplateData.Nodes = append(currentTemplateData.Nodes, newNode)
+						}
+						// If the script has a render attribute, we'll want to add it to the node tree
+						// as a child of the current node since its position in the tree is important
+						break
+					}
 
-								// Add the script or style to the asset bucket
-								if openedTagName == "script" {
-									currentTemplateData.Assets[bucketName].Scripts = append(currentTemplateData.Assets[bucketName].Scripts, elementTextContent)
-								} else {
-									currentTemplateData.Assets[bucketName].Styles = append(currentTemplateData.Assets[bucketName].Styles, elementTextContent)
-								}
-							} else {
-								// If the script or style has a raw attribute, we'll just add it to the node tree
-								textNode := TmphNode{
-									TextContent: elementTextContent,
-									Position:    tagStartPosition,
-								}
-								newNode.Children = append(newNode.Children, &textNode)
-							}
+					propTypesAttribute := getRenderAttribute(renderAttributes, "types")
+					if propTypesAttribute != nil {
+						// If a #types attribute is present, we'll use the script contents
+						// as the prop types JSDoc for the component
+						currentTemplateData.PropTypesJSDoc = elementTextContent
+						break
+					}
+
+					// If the script doesn't have a bucket attribute, we'll use the default bucket
+					bucketName := DEFAULT_BUCKET_NAME
+
+					bucketNameAttribute := getRenderAttribute(renderAttributes, "bucket")
+					if bucketNameAttribute != nil && bucketNameAttribute.AttributeValue != "" {
+						bucketName = bucketNameAttribute.AttributeValue
+					}
+
+					// Create an asset bucket for the bucket name if one doesn't exist
+					if _, ok := currentTemplateData.Assets[bucketName]; !ok {
+						currentTemplateData.Assets[bucketName] = &TmphAssetBucket{
+							Scripts: make([]AssetBucketScript, 0),
+							Styles:  make([]AssetBucketStyle, 0),
 						}
 					}
-				case "link":
-					{
-						relAttribute := getStaticAttribute(staticAttributes, "rel")
-						if relAttribute != nil && relAttribute.AttributeValue == "import" {
-							shouldSkipNode = true
-							hrefAttribute := getStaticAttribute(staticAttributes, "href")
-							if hrefAttribute != nil && hrefAttribute.AttributeValue != "" {
-								importName := ""
-								importAsNameAttribute := getStaticAttribute(staticAttributes, "as")
-								if importAsNameAttribute != nil {
-									importName = importAsNameAttribute.AttributeValue
-								}
 
-								currentTemplateData.ComponentImports = append(
-									currentTemplateData.ComponentImports,
-									ComponentImport{
-										ImportName: importName,
-										Path:       hrefAttribute.AttributeValue,
-										Position:   tagStartPosition,
-									},
-								)
+					scope := "global"
+					scopeAttribute := getRenderAttribute(renderAttributes, "scope")
+					if scopeAttribute != nil {
+						scope = scopeAttribute.AttributeModifier
+					}
+
+					bucketEntry := AssetBucketScript{
+						Content:  elementTextContent,
+						Position: tagStartPosition,
+						Scope:    scope,
+					}
+					currentTemplateData.Assets[bucketName].Scripts = append(currentTemplateData.Assets[bucketName].Scripts, bucketEntry)
+				case "style":
+					// NOTE TO SELF: the issue is that style tags can't have children but
+					// we're adding them to the node tree as if they can and then they never close
+					shouldSkipNode = true
+
+					elementTextContent, tagContentsStartPosition := cursor.ReadRawTagTextContent(openedTagName, false)
+					textNode := TmphNode{
+						TextContent: elementTextContent,
+						Position:    tagContentsStartPosition,
+					}
+					newNode.Children = append(make([]*TmphNode, 0), &textNode)
+
+					rawAttribute := getRenderAttribute(renderAttributes, "raw")
+
+					if rawAttribute != nil {
+						if currentNode != nil {
+							currentNode.Children = append(currentNode.Children, newNode)
+						} else {
+							currentTemplateData.Nodes = append(currentTemplateData.Nodes, newNode)
+						}
+						break
+					}
+
+					if len(elementTextContent) == 0 {
+						break
+					}
+
+					// If the style doesn't have a bucket attribute, we'll use the default bucket
+					bucketName := DEFAULT_BUCKET_NAME
+
+					bucketNameAttribute := getRenderAttribute(renderAttributes, "bucket")
+					if bucketNameAttribute != nil && bucketNameAttribute.AttributeValue != "" {
+						bucketName = bucketNameAttribute.AttributeValue
+					}
+
+					// Create an asset bucket for the bucket name if one doesn't exist
+					if _, ok := currentTemplateData.Assets[bucketName]; !ok {
+						currentTemplateData.Assets[bucketName] = &TmphAssetBucket{
+							Scripts: make([]AssetBucketScript, 0),
+							Styles:  make([]AssetBucketStyle, 0),
+						}
+					}
+
+					bucketEntry := AssetBucketStyle{
+						Content:  elementTextContent,
+						Position: tagStartPosition,
+					}
+					currentTemplateData.Assets[bucketName].Styles = append(currentTemplateData.Assets[bucketName].Styles, bucketEntry)
+				case "link":
+					relAttribute := getStaticAttribute(staticAttributes, "rel")
+					if relAttribute != nil && relAttribute.AttributeValue == "import" {
+						shouldSkipNode = true
+						hrefAttribute := getStaticAttribute(staticAttributes, "href")
+						if hrefAttribute != nil && hrefAttribute.AttributeValue != "" {
+							importName := ""
+							importAsNameAttribute := getStaticAttribute(staticAttributes, "as")
+							if importAsNameAttribute != nil {
+								importName = importAsNameAttribute.AttributeValue
 							}
+
+							currentTemplateData.ComponentImports = append(
+								currentTemplateData.ComponentImports,
+								ComponentImport{
+									ImportName: importName,
+									Path:       hrefAttribute.AttributeValue,
+									Position:   tagStartPosition,
+								},
+							)
 						}
 					}
 				case "slot":
-					{
-						slotNameAttribute := getStaticAttribute(staticAttributes, "name")
+					slotNameAttribute := getStaticAttribute(staticAttributes, "name")
 
-						if slotNameAttribute != nil && slotNameAttribute.AttributeValue != "" {
-							currentTemplateData.NamedSlots = append(currentTemplateData.NamedSlots, slotNameAttribute.AttributeValue)
-						} else {
-							currentTemplateData.HasDefaultSlot = true
-						}
+					if slotNameAttribute != nil && slotNameAttribute.AttributeValue != "" {
+						currentTemplateData.NamedSlots = append(currentTemplateData.NamedSlots, slotNameAttribute.AttributeValue)
+					} else {
+						currentTemplateData.HasDefaultSlot = true
 					}
 				}
 
 				if !shouldSkipNode {
 					if currentNode != nil {
+						if currentNode.Children == nil {
+							currentNode.Children = make([]*TmphNode, 0)
+						}
 						currentNode.Children = append(currentNode.Children, newNode)
 					}
 
-					newNode.Children = make([]*TmphNode, 0)
 					currentNode = newNode
 					currentTemplateData.NodeTree = append(currentTemplateData.NodeTree, currentNode)
 					nodeTreeLen++

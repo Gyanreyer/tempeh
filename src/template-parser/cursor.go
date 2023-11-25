@@ -9,13 +9,13 @@ type RenderAttribute struct {
 	AttributeName     string `json:"name"`
 	AttributeModifier string `json:"modifier,omitempty"`
 	AttributeValue    string `json:"value,omitempty"`
-	Position          string `json:"position,omitempty"`
+	Position          string `json:"position"`
 }
 
 type StaticAttribute struct {
 	AttributeName  string `json:"name"`
 	AttributeValue string `json:"value,omitempty"`
-	Position       string `json:"position,omitempty"`
+	Position       string `json:"position"`
 }
 
 func isVoidElement(tagName string) bool {
@@ -532,10 +532,12 @@ func (c *Cursor) ReadClosingTag() string {
 }
 
 // Reads the content of a tag as a string without parsing it
-func (c *Cursor) ReadRawTagTextContent(tagName string, shouldPreserveWhitespace bool) string {
+func (c *Cursor) ReadRawTagTextContent(tagName string, shouldPreserveWhitespace bool) (string, string) {
 	if !shouldPreserveWhitespace {
 		c.SkipWhiteSpace()
 	}
+
+	contentStartPosition := c.GetPosition()
 
 	contentStartIndex := c.index
 	contentEndIndex := c.index
@@ -571,5 +573,5 @@ func (c *Cursor) ReadRawTagTextContent(tagName string, shouldPreserveWhitespace 
 		)
 	}
 
-	return textContent
+	return textContent, contentStartPosition
 }

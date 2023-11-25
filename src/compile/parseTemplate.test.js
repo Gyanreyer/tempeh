@@ -276,4 +276,167 @@ describe("parseTemplate", () => {
       },
     });
   });
+
+  test("should parse a component file with styles", async () => {
+    const componentFileBuffer = await readFile(
+      resolveRelativePath(
+        "../../test/fixtures/componentWithStyles.tmph.html",
+        import.meta
+      )
+    );
+
+    const parsedTemplateData = await parseTemplate(componentFileBuffer);
+
+    assert.deepStrictEqual(parsedTemplateData, {
+      hasDefaultSlot: false,
+      position: "1:1",
+      nodes: [
+        {
+          tagName: "main",
+          position: "1:1",
+          children: [
+            {
+              tagName: "h1",
+              position: "2:3",
+              children: [
+                {
+                  textContent: "Heading",
+                  position: "2:7",
+                },
+              ],
+            },
+            {
+              textContent: " ",
+              position: "3:1",
+            },
+            {
+              tagName: "p",
+              position: "3:3",
+              children: [
+                {
+                  textContent: "Paragraph",
+                  position: "3:6",
+                },
+              ],
+            },
+          ],
+        },
+        {
+          tagName: "style",
+          position: "22:1",
+          renderAttributes: [
+            {
+              name: "raw",
+              position: "22:9",
+            },
+          ],
+          children: [
+            {
+              textContent: `main {
+    color: red;
+  }`,
+              position: "23:3",
+            },
+          ],
+        },
+      ],
+      assets: {
+        default: {
+          styles: [
+            {
+              position: "5:1",
+              content: `@scope {
+    main {
+      font-size: 1.2em;
+    }
+
+    h1,
+    p {
+      margin: 0;
+    }
+  }`,
+            },
+          ],
+        },
+        global: {
+          styles: [
+            {
+              position: "17:1",
+              content: `:root {
+    --color: #333;
+  }`,
+            },
+          ],
+        },
+      },
+    });
+  });
+
+  test("should parse a component file with scripts", async () => {
+    const componentFileBuffer = await readFile(
+      resolveRelativePath(
+        "../../test/fixtures/componentWithScripts.tmph.html",
+        import.meta
+      )
+    );
+
+    const parsedTemplateData = await parseTemplate(componentFileBuffer);
+
+    assert.deepStrictEqual(parsedTemplateData, {
+      hasDefaultSlot: false,
+      position: "1:1",
+      nodes: [
+        {
+          tagName: "button",
+          position: "1:1",
+          children: [
+            {
+              textContent: "Click me!",
+              position: "1:9",
+            },
+          ],
+        },
+        {
+          tagName: "script",
+          position: "19:1",
+          renderAttributes: [
+            {
+              name: "render",
+              position: "19:10",
+            },
+          ],
+          children: [
+            {
+              textContent:
+                "export const num = Math.random();\n  export function render() {\n    return `<button>Click me!</button>`;\n  }",
+              position: "20:3",
+            },
+          ],
+        },
+      ],
+      assets: {
+        default: {
+          scripts: [
+            {
+              content:
+                "const observer = new IntersectionObserver((entries) => {\n    entries.forEach((entry) => {\n      if (entry.isIntersecting) {\n        entry.target.opacity = 1;\n      }\n    });\n  });",
+              scope: "component",
+              position: "2:1",
+            },
+            {
+              content:
+                'this.addEventListener("click", () => console.log("You clicked me!"));\n\n  observer.observe(this);',
+              scope: "instance",
+              position: "11:1",
+            },
+            {
+              content: 'console.log("This is a global script!");',
+              scope: "global",
+              position: "16:1",
+            },
+          ],
+        },
+      },
+    });
+  });
 });
