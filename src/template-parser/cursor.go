@@ -144,6 +144,10 @@ func (c *Cursor) AdvanceChar(amount ...int) (rune, error) {
 	return newChar, err
 }
 
+func (c *Cursor) IsAtEnd() bool {
+	return c.index > c.maxIndex
+}
+
 func (c *Cursor) GetPosition() string {
 	return strconv.Itoa(c.line) + ":" + strconv.Itoa(c.column)
 }
@@ -239,10 +243,10 @@ func (c *Cursor) SkipComment() {
 	c.AdvanceChar(3)
 }
 
-func (c *Cursor) ReadUntilTag(shouldPreserveWhiteSpace bool, childIndex int) (string, bool) {
+func (c *Cursor) ReadUntilTag() (textContent string, isClosingTag bool) {
 	textStartIndex := c.index
 
-	isClosingTag := false
+	isClosingTag = false
 
 	_, err := c.CurrentChar()
 
@@ -268,18 +272,7 @@ func (c *Cursor) ReadUntilTag(shouldPreserveWhiteSpace bool, childIndex int) (st
 
 	textEndIndex := c.index
 
-	textContent := c.str[textStartIndex:textEndIndex]
-
-	if !shouldPreserveWhiteSpace {
-		textContent = flattenWhiteSpace(
-			textContent,
-			true,
-			// If this is the first child of an element, strip leading whitespace
-			childIndex == 0,
-			// If we just encountered a closing tag, meaning this is the last child of an element, strip trailing whitespace
-			isClosingTag,
-		)
-	}
+	textContent = c.str[textStartIndex:textEndIndex]
 
 	return textContent, isClosingTag
 }

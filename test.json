@@ -1,85 +1,144 @@
 {
-  "nodes": [
-    {
-      "tagName": "ul",
-      "children": [
-        {
-          "tagName": "ListItem",
-          "renderAttributes": [
-            {
-              "name": "for",
-              "modifier": "item",
-              "value": "items"
-            },
-            {
-              "name": "attr",
-              "modifier": "name",
-              "value": "item.name"
-            },
-            {
-              "name": "text",
-              "value": "item.value"
-            }
-          ]
-        }
-      ]
-    }
-  ],
+  "nodes": {
+    "children": [
+      {
+        "tagName": "div",
+        "children": [
+          {
+            "textContent": "Hello, world!",
+            "position": "1:6"
+          }
+        ],
+        "position": "1:1"
+      },
+      {
+        "textContent": "Some root-level text ",
+        "position": "2:1"
+      },
+      {
+        "tagName": "button",
+        "staticAttributes": [
+          {
+            "name": "role",
+            "value": "button",
+            "position": "3:9"
+          },
+          {
+            "name": "aria-disabled",
+            "position": "3:23"
+          },
+          {
+            "name": "disabled",
+            "position": "3:37"
+          },
+          {
+            "name": "aria-label",
+            "value": "My custom label",
+            "position": "3:46"
+          }
+        ],
+        "children": [
+          {
+            "textContent": "Click me ",
+            "position": "4:0"
+          },
+          {
+            "tagName": "svg",
+            "staticAttributes": [
+              {
+                "name": "viewBox",
+                "value": "0 0 100 100",
+                "position": "5:8"
+              },
+              {
+                "name": "xmlns",
+                "value": "http://www.w3.org/2000/svg",
+                "position": "5:30"
+              },
+              {
+                "name": "aria-hidden",
+                "position": "5:65"
+              }
+            ],
+            "children": [
+              {
+                "tagName": "circle",
+                "staticAttributes": [
+                  {
+                    "name": "cx",
+                    "value": "50",
+                    "position": "6:13"
+                  },
+                  {
+                    "name": "cy",
+                    "value": "50",
+                    "position": "6:21"
+                  },
+                  {
+                    "name": "r",
+                    "value": "50",
+                    "position": "6:29"
+                  }
+                ],
+                "position": "6:5"
+              }
+            ],
+            "position": "5:3"
+          }
+        ],
+        "position": "3:1"
+      },
+      {
+        "tagName": "p",
+        "children": [
+          {
+            "textContent": "Spaces should ",
+            "position": "9:4"
+          },
+          {
+            "tagName": "_",
+            "children": [
+              {
+                "textContent": "be",
+                "position": "9:21"
+              }
+            ],
+            "position": "9:18"
+          },
+          {
+            "textContent": " ",
+            "position": "9:27"
+          },
+          {
+            "tagName": "em",
+            "children": [
+              {
+                "textContent": "preserved",
+                "position": "9:32"
+              }
+            ],
+            "position": "9:28"
+          },
+          {
+            "textContent": " ",
+            "position": "9:46"
+          },
+          {
+            "tagName": "strong",
+            "children": [
+              {
+                "textContent": "but flattened",
+                "position": "9:58"
+              }
+            ],
+            "position": "9:50"
+          }
+        ],
+        "position": "9:1"
+      }
+    ],
+    "position": "1:1"
+  },
   "hasDefaultSlot": false,
-  "inlineComponents": {
-    "ListItem": {
-      "nodes": [
-        {
-          "tagName": "li",
-          "children": [
-            {
-              "tagName": "strong",
-              "renderAttributes": [
-                {
-                  "name": "text",
-                  "value": "`${name}:`"
-                }
-              ]
-            },
-            {
-              "textContent": " "
-            },
-            {
-              "tagName": "slot"
-            }
-          ]
-        }
-      ],
-      "hasDefaultSlot": true
-    },
-    "NestedComponent": {
-      "nodes": [
-        {
-          "tagName": "div",
-          "children": [
-            {
-              "textContent": "Why would you do this?!"
-            }
-          ]
-        }
-      ],
-      "hasDefaultSlot": false
-    },
-    "WhackyComponent": {
-      "nodes": [
-        {
-          "tagName": "div",
-          "children": [
-            {
-              "tagName": "InnerComponent"
-            },
-            {
-              "textContent": " "
-            }
-          ]
-        }
-      ],
-      "hasDefaultSlot": false
-    }
-  }
+  "position": "1:1"
 }

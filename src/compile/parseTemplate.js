@@ -56,55 +56,32 @@ import { resolveRelativePath } from "../utils/resolveRelativePath.js";
  * @property {Record<string, Omit<ParsedTemplateResponse, "inlineComponents">>} [inlineComponents]
  */
 
-const parserBinaryPath = resolveRelativePath(
-  "../../bin/parse-template",
-  import.meta
-);
+// const parserBinaryPath = resolveRelativePath(
+//   "../../bin/parse-template",
+//   import.meta
+// );
+
+// /** @type {import("node:child_process").ChildProcessWithoutNullStreams | null} */
+// let parserProcess = null;
 
 /**
- * Takes the path to a .tmph.html file and parses it into an array of TmphNodes
- * @param {Buffer} fileBuffer
+ * Takes the path to a .tmph.html file and parses it into a JSON object
+ * that can be used by the compiler.
+ * @param {string} filePath
  */
-export async function parseTemplate(fileBuffer) {
+export async function parseTemplate(filePath) {
+  // if (!parserProcess) {
+  //   parserProcess = spawn(parserBinaryPath);
+  // }
+
+  const requestURL = new URL("http://localhost:8674/parse");
+  requestURL.searchParams.set("path", filePath);
+
   // Prevent extension on all items in the node tree. This means that items can be deleted
   // or modified, but never added. This should hopefully reduce memory usage.
   return deepPreventExtensions(
-    await /** @type {Promise<ParsedTemplateResponse>} */ (
-      new Promise((resolve, reject) => {
-        // Concatentating buffers requires an array,
-        // so we'll create a re-usable one at the top to avoid
-        // unnecessary garbage collection. The first item will represent
-        // the buffer we're writing to, and the second will be the latest buffer data that
-        // we're appending.
-        const bufferArray = new Array(2);
-        bufferArray[0] = Buffer.from("", "utf8");
-
-        // parserProcessArgs[1] = path;
-        // Spawn a process to run the parser binary
-        // The binary will read the file at the path passed in,
-        // parse it, and stream the result to stdout as a JSON string
-        // array of TmphNodes objects and strings at the root of the document.
-        const process = spawn(parserBinaryPath);
-
-        process.on("error", reject);
-
-        // As data streams in from stdout, append it to the buffer
-        process.stdout.on("data", (data) => {
-          bufferArray[1] = data;
-          bufferArray[0] = Buffer.concat(bufferArray);
-        });
-
-        // Once we've reached the end of the stdout stream, parse the buffer and resolve
-        // with the parsed node data
-        process.stdout.on("end", () => {
-          resolve(JSON.parse(bufferArray[0].toString("utf-8")));
-        });
-
-        // Write the file buffer to stdin and the parser will start
-        // processing it
-        process.stdin.write(fileBuffer);
-        process.stdin.end();
-      })
+    /** @type {Promise<ParsedTemplateResponse>} */ (
+      await fetch(requestURL).then((res) => res.json())
     )
   );
 }
