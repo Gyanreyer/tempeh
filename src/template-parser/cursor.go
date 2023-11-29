@@ -47,58 +47,6 @@ func isLegalUnquotedAttributeValueChar(char rune) bool {
 	return !isWhiteSpace(char) && !isAttributeValueQuoteChar(char) && !isEndOfTagChar(char) && char != '<'
 }
 
-func flattenWhiteSpace(str string, shouldFlattenIntermediateSpace bool, shouldStripLeadingSpace bool, shouldStripTrailingSpace bool) string {
-	index := 0
-	strLen := len(str)
-
-	for index < strLen {
-		if !isWhiteSpace(rune(str[index])) {
-			// Skip over non-whitespace characters
-			index++
-			continue
-		}
-
-		// We hit whitespace! Let's keep going until we hit the end of this group of whitespace and then figure out how to flatten it
-		whiteSpaceGroupStartIndex := index
-		index++
-
-		for index < strLen && isWhiteSpace(rune(str[index])) {
-			index++
-		}
-		whiteSpaceGroupEndIndex := index
-
-		isLeading := whiteSpaceGroupStartIndex == 0
-		isTrailing := whiteSpaceGroupEndIndex >= strLen
-
-		shouldStripSpace := (isLeading && shouldStripLeadingSpace) || (isTrailing && shouldStripTrailingSpace)
-
-		if isLeading {
-			str = str[whiteSpaceGroupEndIndex:]
-			index = 1
-			if !shouldStripSpace {
-				str = " " + str
-				index++
-			}
-		} else if isTrailing {
-			str = str[:whiteSpaceGroupStartIndex]
-			if !shouldStripSpace {
-				str = str + " "
-			}
-			index = len(str)
-		} else if shouldFlattenIntermediateSpace {
-			beforeWhiteSpace := str[:whiteSpaceGroupStartIndex]
-			afterWhiteSpace := str[whiteSpaceGroupEndIndex:]
-			// All other whitespace should be flattened to a single space
-			str = beforeWhiteSpace + " " + afterWhiteSpace
-			index = whiteSpaceGroupStartIndex + 1
-		}
-
-		strLen = len(str)
-	}
-
-	return str
-}
-
 type Cursor struct {
 	index    int
 	str      string
@@ -119,27 +67,43 @@ func (c *Cursor) Peek(peekAmount int) (rune, error) {
 	return c.At(c.index + peekAmount)
 }
 
+func (c *Cursor) PeekSubstring(length int) (string, error) {
+	endIndex := c.index + length
+	if length < 0 || endIndex > c.maxIndex {
+		return "", errors.New("substring end index out of bounds")
+	}
+
+	return c.str[c.index:endIndex], nil
+}
+
 func (c *Cursor) CurrentChar() (rune, error) {
 	return c.At(c.index)
 }
 
-func (c *Cursor) AdvanceChar(amount ...int) (rune, error) {
+func (c *Cursor) AdvanceChar(amount ...int) (newChar rune, err error) {
+	incrementAmount := 1
 	if len(amount) > 0 {
-		c.index += amount[0]
-		c.column += amount[0]
-	} else {
-		c.index++
-		c.column++
+		incrementAmount = amount[0]
 	}
 
-	newChar, err := c.CurrentChar()
+	newIndex := c.index + incrementAmount
 
-	if err == nil {
-		if newChar == '\n' {
-			c.line++
-			c.column = 0
+	for err == nil && c.index < newIndex {
+		prevChar, err := c.CurrentChar()
+		c.index++
+		if err == nil {
+			if prevChar == '\n' || prevChar == '\r' {
+				c.line++
+				c.column = 1
+			} else {
+				c.column++
+			}
+		} else {
+			break
 		}
 	}
+
+	newChar, err = c.CurrentChar()
 
 	return newChar, err
 }
@@ -173,64 +137,41 @@ func (c *Cursor) IsOpeningTagAhead() bool {
 	return err == nil && isLegalLeadingTagNameChar(ch)
 }
 
-func (c *Cursor) IsClosingTagAhead() bool {
-	ch, err := c.CurrentChar()
+func (c *Cursor) IsOpeningTagWithNameAhead(tagName string) bool {
+	expectedSubstring := "<" + tagName
 
-	if err != nil || ch != '<' {
-		return false
-	}
+	substring, err := c.PeekSubstring(len(expectedSubstring))
 
-	ch, err = c.Peek(1)
-
-	if err != nil || ch != '/' {
-		return false
-	}
-
-	ch, err = c.Peek(2)
-
-	return err == nil && isLegalLeadingTagNameChar(ch)
+	return err == nil && substring == expectedSubstring
 }
+
+const CLOSING_TAG_PREFIX = "</"
+
+func (c *Cursor) IsClosingTagAhead() bool {
+	substring, err := c.PeekSubstring(len(CLOSING_TAG_PREFIX))
+	return err == nil && substring == CLOSING_TAG_PREFIX
+}
+
+func (c *Cursor) IsClosingTagWithNameAhead(tagName string) bool {
+	expectedSubstring := CLOSING_TAG_PREFIX + tagName
+
+	substring, err := c.PeekSubstring(len(expectedSubstring))
+
+	return err == nil && substring == expectedSubstring
+}
+
+const COMMENT_OPEN_TAG = "<!--"
 
 func (c *Cursor) IsCommentOpenTagAhead() bool {
-	ch, err := c.CurrentChar()
-
-	if err != nil || ch != '<' {
-		return false
-	}
-
-	ch, err = c.Peek(1)
-
-	if err != nil || ch != '!' {
-		return false
-	}
-
-	ch, err = c.Peek(2)
-
-	if err != nil || ch != '-' {
-		return false
-	}
-
-	ch, err = c.Peek(3)
-
-	return err == nil && ch == '-'
+	substring, err := c.PeekSubstring(len(COMMENT_OPEN_TAG))
+	return err == nil && substring == COMMENT_OPEN_TAG
 }
 
+const COMMENT_CLOSE_TAG = "-->"
+
 func (c *Cursor) IsCommentCloseTagAhead() bool {
-	ch, err := c.CurrentChar()
-
-	if err != nil || ch != '-' {
-		return false
-	}
-
-	ch, err = c.Peek(1)
-
-	if err != nil || ch != '-' {
-		return false
-	}
-
-	ch, err = c.Peek(2)
-
-	return err == nil && ch == '>'
+	substring, err := c.PeekSubstring(len(COMMENT_CLOSE_TAG))
+	return err == nil && substring == COMMENT_CLOSE_TAG
 }
 
 func (c *Cursor) SkipComment() {
@@ -525,46 +466,48 @@ func (c *Cursor) ReadClosingTag() string {
 }
 
 // Reads the content of a tag as a string without parsing it
-func (c *Cursor) ReadRawTagTextContent(tagName string, shouldPreserveWhitespace bool) (string, string) {
-	if !shouldPreserveWhitespace {
-		c.SkipWhiteSpace()
-	}
-
-	contentStartPosition := c.GetPosition()
+func (c *Cursor) ReadRawTagTextContent(tagName string, shouldCheckForNestedTags bool) (textContent string) {
 
 	contentStartIndex := c.index
 	contentEndIndex := c.index
 
 	_, err := c.CurrentChar()
 
+	nestedTagDepth := 0
+
 	for err == nil {
 		// Keep going until we hit a closing tag with the same name as the opening tag
-		if c.IsClosingTagAhead() {
+		if c.IsClosingTagWithNameAhead(tagName) {
 			// If this looks like a closing tag, hang onto the current index as the potential end
 			// of the tag's content; ReadClosingTag will advance the cursor index past the closing tag
 			// and we don't want to include any of that in the returned content
 			contentEndIndex = c.index
-			closingTagName := c.ReadClosingTag()
-			if closingTagName == tagName {
+			if nestedTagDepth > 0 {
+				nestedTagDepth--
+			} else {
 				break
 			}
 		} else {
+			if shouldCheckForNestedTags && c.IsOpeningTagWithNameAhead(tagName) {
+				nestedTagDepth++
+			}
 			_, err = c.AdvanceChar()
 		}
 
 		contentEndIndex = c.index
 	}
 
-	textContent := c.str[contentStartIndex:contentEndIndex]
+	textContent = c.str[contentStartIndex:contentEndIndex]
 
-	if !shouldPreserveWhitespace {
-		textContent = flattenWhiteSpace(textContent,
-			// Only strip leading and trailing whitespace
-			false,
-			true,
-			true,
-		)
+	return textContent
+}
+
+func NewCursor(str string, line int, column int) *Cursor {
+	return &Cursor{
+		index:    0,
+		str:      str,
+		maxIndex: len(str) - 1,
+		line:     line,
+		column:   column,
 	}
-
-	return textContent, contentStartPosition
 }

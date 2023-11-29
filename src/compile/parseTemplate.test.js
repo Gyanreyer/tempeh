@@ -1,10 +1,23 @@
-import { test, describe } from "node:test";
+import { test, describe, before, after } from "node:test";
 import * as assert from "node:assert";
 
 import { resolveRelativePath } from "../utils/resolveRelativePath.js";
 import { parseTemplate } from "./parseTemplate.js";
+import {
+  startTemplateParserServer,
+  stopTemplateParserServer,
+} from "./templateParserServer.js";
+import { writeFileSync } from "node:fs";
 
 describe("parseTemplate", () => {
+  before(() => {
+    startTemplateParserServer();
+  });
+
+  after(() => {
+    stopTemplateParserServer();
+  });
+
   test("should parse a simple component file as expected", async () => {
     const parsedTemplateData = await parseTemplate(
       resolveRelativePath(
@@ -166,6 +179,8 @@ describe("parseTemplate", () => {
       )
     );
 
+    writeFileSync("./test.json", JSON.stringify(parsedTemplateData, null, 2));
+
     assert.deepStrictEqual(parsedTemplateData, {
       hasDefaultSlot: false,
       nodes: {
@@ -206,6 +221,7 @@ describe("parseTemplate", () => {
         ListItem: {
           hasDefaultSlot: true,
           nodes: {
+            tagName: "template",
             position: "4:1",
             children: [
               {
@@ -234,11 +250,18 @@ describe("parseTemplate", () => {
                 ],
               },
             ],
+            renderAttributes: [
+              {
+                name: "component",
+                value: "ListItem",
+              },
+            ],
           },
         },
         WhackyComponent: {
           hasDefaultSlot: false,
           nodes: {
+            tagName: "template",
             position: "10:1",
             children: [
               {
@@ -256,11 +279,18 @@ describe("parseTemplate", () => {
                 ],
               },
             ],
+            renderAttributes: [
+              {
+                name: "component",
+                value: "WhackyComponent",
+              },
+            ],
           },
         },
         NestedComponent: {
           hasDefaultSlot: false,
           nodes: {
+            tagName: "template",
             position: "13:5",
             children: [
               {
@@ -272,6 +302,12 @@ describe("parseTemplate", () => {
                     position: "14:12",
                   },
                 ],
+              },
+            ],
+            renderAttributes: [
+              {
+                name: "component",
+                value: "NestedComponent",
               },
             ],
           },

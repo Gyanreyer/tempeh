@@ -14,16 +14,17 @@ type TmphNode struct {
 	Children         []*TmphNode       `json:"children,omitempty"`
 	TextContent      string            `json:"textContent,omitempty"`
 	Position         string            `json:"position"`
-	Parent           *TmphNode         `json:"-"`
 }
 
 type AssetBucketStyle struct {
-	Content  string `json:"content"`
+	Content  string `json:"content,omitempty"`
+	Path     string `json:"path,omitempty"`
 	Position string `json:"position"`
 }
 
 type AssetBucketScript struct {
-	Content  string `json:"content"`
+	Content  string `json:"content,omitempty"`
+	Path     string `json:"path,omitempty"`
 	Scope    string `json:"scope"`
 	Position string `json:"position"`
 }
@@ -41,15 +42,18 @@ type ComponentImport struct {
 	Position   string `json:"position"`
 }
 
-type ParsedTemplateData struct {
-	Nodes            *TmphNode                      `json:"nodes"`
-	Assets           TmphAssetBucketMap             `json:"assets,omitempty"`
-	HasDefaultSlot   bool                           `json:"hasDefaultSlot"`
-	NamedSlots       []string                       `json:"namedSlots,omitempty"`
-	ComponentImports []ComponentImport              `json:"componentImports,omitempty"`
-	PropTypesJSDoc   string                         `json:"propTypesJSDoc,omitempty"`
-	InlineComponents map[string]*ParsedTemplateData `json:"inlineComponents,omitempty"`
-	CurrentLeaf      *TmphNode                      `json:"-"`
+type Component struct {
+	RootNode       *TmphNode       `json:"rootNode"`
+	HasDefaultSlot bool            `json:"hasDefaultSlot"`
+	NamedSlots     map[string]bool `json:"namedSlots,omitempty"`
+	PropTypesJSDoc string          `json:"propTypesJSDoc,omitempty"`
+}
+
+type TemplateData struct {
+	MainComponent    *Component            `json:"mainComponent,omitempty"`
+	InlineComponents map[string]*Component `json:"inlineComponents,omitempty"`
+	Assets           TmphAssetBucketMap    `json:"assets,omitempty"`
+	ComponentImports []ComponentImport     `json:"componentImports,omitempty"`
 }
 
 const DEFAULT_BUCKET_NAME = "default"
@@ -78,28 +82,24 @@ func parseTemplateFile(templateFilePath string) (parsedJSON []byte, err error) {
 
 	fileStr := string(fileBytes)
 
-	cursor := &Cursor{index: 0, str: fileStr, maxIndex: len(fileStr) - 1, line: 1, column: 1}
-
-	rootPosition := cursor.GetPosition()
-
 	rootNode := &TmphNode{
 		Children: make([]*TmphNode, 0),
-		Position: rootPosition,
+		Position: "1:1",
 	}
-	templateData := &ParsedTemplateData{
-		Nodes:            rootNode,
+	mainComponent := &Component{
+		RootNode:       rootNode,
+		HasDefaultSlot: false,
+		NamedSlots:     make(map[string]bool),
+		PropTypesJSDoc: "",
+	}
+	templateData := &TemplateData{
+		MainComponent:    mainComponent,
+		InlineComponents: make(map[string]*Component),
 		Assets:           make(TmphAssetBucketMap),
-		HasDefaultSlot:   false,
-		NamedSlots:       make([]string, 0),
 		ComponentImports: make([]ComponentImport, 0),
-		PropTypesJSDoc:   "",
-		InlineComponents: make(map[string]*ParsedTemplateData, 0),
-		CurrentLeaf:      rootNode,
 	}
 
-	for !cursor.IsAtEnd() {
-		parseTemplateContent(cursor, false, templateData, templateData)
-	}
+	parseElementChildren(rootNode, fileStr, false, 1, 1, mainComponent, templateData)
 
 	return json.Marshal(templateData)
 }
