@@ -11,30 +11,47 @@ let parserProcess = null;
 /** @type {string | null} */
 let parserProcessServerOrigin = null;
 
+/** @type {Promise<void> | null} */
+let startingParserPromise = null;
+
 export async function startTemplateParserServer() {
   if (!parserProcess) {
-    await /** @type {Promise<void>} */ (
-      new Promise((resolve, reject) => {
-        parserProcess = spawn(parserBinaryPath);
+    if (startingParserPromise) {
+      await startingParserPromise;
+    } else {
+      startingParserPromise = /** @type {Promise<void>} */ (
+        new Promise((resolve, reject) => {
+          parserProcess = spawn(parserBinaryPath);
 
-        parserProcess.addListener("error", () => reject());
-        parserProcess.stdout.on("data", (message) => {
-          parserProcessServerOrigin = message.toString();
+          parserProcess.addListener("error", () => reject());
+          parserProcess.stdout.on("data", (message) => {
+            parserProcessServerOrigin = message.toString();
 
-          if (!parserProcessServerOrigin?.startsWith("http://localhost")) {
-            reject(
-              new Error("Template parser server failed to start correctly")
-            );
-          } else {
-            resolve();
-          }
-        });
-      })
-    ).finally(() => {
-      // Clean up the listeners we added
-      parserProcess?.removeAllListeners();
-      parserProcess?.stdout.removeAllListeners();
-    });
+            if (!parserProcessServerOrigin?.startsWith("http://localhost")) {
+              reject(
+                new Error("Template parser server failed to start correctly")
+              );
+            } else {
+              resolve();
+            }
+          });
+        })
+      ).finally(() => {
+        // Clean up the listeners we added
+        parserProcess?.removeAllListeners();
+        parserProcess?.stdout.removeAllListeners();
+      });
+
+      try {
+        await startingParserPromise;
+      } catch (e) {
+        console.error("Template parser server failed to start");
+        parserProcess = null;
+        parserProcessServerOrigin = null;
+      }
+
+      startingParserPromise = null;
+    }
   }
 
   return parserProcessServerOrigin;

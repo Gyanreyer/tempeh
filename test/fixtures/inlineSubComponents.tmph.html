@@ -11,7 +11,9 @@
   <div>
     <InnerComponent></InnerComponent>
     <template #component="NestedComponent">
+      <slot name="before"></slot>
       <div>Why would you do this?!</div>
+      <slot name="after"></slot>
     </template>
   </div>
 </template>

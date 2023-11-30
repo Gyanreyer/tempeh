@@ -184,18 +184,13 @@ func (c *Cursor) SkipComment() {
 	c.AdvanceChar(3)
 }
 
-func (c *Cursor) ReadUntilTag() (textContent string, isClosingTag bool) {
+func (c *Cursor) ReadUntilTag() (textContent string) {
 	textStartIndex := c.index
-
-	isClosingTag = false
 
 	_, err := c.CurrentChar()
 
 	for err == nil {
-		if c.IsOpeningTagAhead() {
-			break
-		} else if c.IsClosingTagAhead() {
-			isClosingTag = true
+		if c.IsOpeningTagAhead() || c.IsClosingTagAhead() {
 			break
 		} else if c.IsCommentOpenTagAhead() {
 			commentStartIndex := c.index
@@ -215,7 +210,7 @@ func (c *Cursor) ReadUntilTag() (textContent string, isClosingTag bool) {
 
 	textContent = c.str[textStartIndex:textEndIndex]
 
-	return textContent, isClosingTag
+	return textContent
 }
 
 func (c *Cursor) ReadTagName() string {
@@ -467,7 +462,6 @@ func (c *Cursor) ReadClosingTag() string {
 
 // Reads the content of a tag as a string without parsing it
 func (c *Cursor) ReadRawTagTextContent(tagName string, shouldCheckForNestedTags bool) (textContent string) {
-
 	contentStartIndex := c.index
 	contentEndIndex := c.index
 
@@ -485,15 +479,17 @@ func (c *Cursor) ReadRawTagTextContent(tagName string, shouldCheckForNestedTags 
 			if nestedTagDepth > 0 {
 				nestedTagDepth--
 			} else {
+				// Read the closing tag to advance the cursor past it
+				c.ReadClosingTag()
 				break
 			}
 		} else {
 			if shouldCheckForNestedTags && c.IsOpeningTagWithNameAhead(tagName) {
 				nestedTagDepth++
 			}
-			_, err = c.AdvanceChar()
 		}
 
+		_, err = c.AdvanceChar()
 		contentEndIndex = c.index
 	}
 

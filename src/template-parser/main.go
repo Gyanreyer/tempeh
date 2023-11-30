@@ -8,57 +8,6 @@ import (
 	"strconv"
 )
 
-type TmphNode struct {
-	TagName          string            `json:"tagName,omitempty"`
-	StaticAttributes []StaticAttribute `json:"staticAttributes,omitempty"`
-	RenderAttributes []RenderAttribute `json:"renderAttributes,omitempty"`
-	Children         []*TmphNode       `json:"children,omitempty"`
-	TextContent      string            `json:"textContent,omitempty"`
-	Position         string            `json:"position"`
-}
-
-type AssetBucketStyle struct {
-	Content  string `json:"content,omitempty"`
-	Path     string `json:"path,omitempty"`
-	Position string `json:"position"`
-}
-
-type AssetBucketScript struct {
-	Content  string `json:"content,omitempty"`
-	Path     string `json:"path,omitempty"`
-	Scope    string `json:"scope"`
-	Position string `json:"position"`
-}
-
-type TmphAssetBucket struct {
-	Scripts []AssetBucketScript `json:"scripts,omitempty"`
-	Styles  []AssetBucketStyle  `json:"styles,omitempty"`
-}
-
-type TmphAssetBucketMap map[string]*TmphAssetBucket
-
-type ComponentImport struct {
-	ImportName string `json:"importName,omitempty"`
-	Path       string `json:"path"`
-	Position   string `json:"position"`
-}
-
-type Component struct {
-	RootNode       *TmphNode       `json:"rootNode"`
-	HasDefaultSlot bool            `json:"hasDefaultSlot"`
-	NamedSlots     map[string]bool `json:"namedSlots,omitempty"`
-	PropTypesJSDoc string          `json:"propTypesJSDoc,omitempty"`
-}
-
-type TemplateData struct {
-	MainComponent    *Component            `json:"mainComponent,omitempty"`
-	InlineComponents map[string]*Component `json:"inlineComponents,omitempty"`
-	Assets           TmphAssetBucketMap    `json:"assets,omitempty"`
-	ComponentImports []ComponentImport     `json:"componentImports,omitempty"`
-}
-
-const DEFAULT_BUCKET_NAME = "default"
-
 func main() {
 	listener, err := net.Listen("tcp", "localhost:0")
 
