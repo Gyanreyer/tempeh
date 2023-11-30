@@ -2,9 +2,10 @@ package main
 
 import (
 	"encoding/json"
-	"log"
+	"net"
 	"net/http"
 	"os"
+	"strconv"
 )
 
 type TmphNode struct {
@@ -59,6 +60,12 @@ type TemplateData struct {
 const DEFAULT_BUCKET_NAME = "default"
 
 func main() {
+	listener, err := net.Listen("tcp", "localhost:0")
+
+	if err != nil {
+		panic(err)
+	}
+
 	http.HandleFunc("/parse", func(w http.ResponseWriter, r *http.Request) {
 		parsedJSON, err := parseTemplateFile(r.URL.Query().Get("path"))
 		if err != nil {
@@ -70,7 +77,13 @@ func main() {
 		}
 	})
 
-	log.Fatal(http.ListenAndServe("localhost:8674", nil))
+	defer http.Serve(listener, nil)
+
+	port := listener.Addr().(*net.TCPAddr).Port
+
+	// Write the server's URL origin to stdout so that the parent process can read it
+	// and know that the server is ready to receive requests at that address
+	os.Stdout.Write([]byte("http://localhost:" + strconv.Itoa(port)))
 }
 
 func parseTemplateFile(templateFilePath string) (parsedJSON []byte, err error) {

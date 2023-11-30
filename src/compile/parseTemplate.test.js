@@ -10,8 +10,8 @@ import {
 import { writeFileSync } from "node:fs";
 
 describe("parseTemplate", () => {
-  before(() => {
-    startTemplateParserServer();
+  before(async () => {
+    await startTemplateParserServer();
   });
 
   after(() => {

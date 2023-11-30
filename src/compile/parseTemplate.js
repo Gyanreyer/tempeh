@@ -1,7 +1,5 @@
-import { spawn } from "node:child_process";
-
 import { deepPreventExtensions } from "../utils/deepPreventExtensions.js";
-import { resolveRelativePath } from "../utils/resolveRelativePath.js";
+import { startTemplateParserServer } from "./templateParserServer.js";
 
 /**
  * @typedef {Object} TmphAttribute
@@ -56,25 +54,19 @@ import { resolveRelativePath } from "../utils/resolveRelativePath.js";
  * @property {Record<string, Omit<ParsedTemplateResponse, "inlineComponents">>} [inlineComponents]
  */
 
-// const parserBinaryPath = resolveRelativePath(
-//   "../../bin/parse-template",
-//   import.meta
-// );
-
-// /** @type {import("node:child_process").ChildProcessWithoutNullStreams | null} */
-// let parserProcess = null;
-
 /**
  * Takes the path to a .tmph.html file and parses it into a JSON object
  * that can be used by the compiler.
  * @param {string} filePath
  */
 export async function parseTemplate(filePath) {
-  // if (!parserProcess) {
-  //   parserProcess = spawn(parserBinaryPath);
-  // }
+  const parserServerOrigin = await startTemplateParserServer();
 
-  const requestURL = new URL("http://localhost:8674/parse");
+  if (!parserServerOrigin) {
+    throw new Error("Template parser server not running");
+  }
+
+  const requestURL = new URL("/parse", parserServerOrigin);
   requestURL.searchParams.set("path", filePath);
 
   // Prevent extension on all items in the node tree. This means that items can be deleted
