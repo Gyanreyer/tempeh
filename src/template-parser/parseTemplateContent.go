@@ -6,7 +6,7 @@ func isRelativePath(path string) bool {
 	return path[0] == '.' || path[0] == '/'
 }
 
-func parseElementChildren(parentNode *TmphNode, elementContent string, shouldPreserveWhiteSpace bool, line int, column int, component *Component, templateData *TemplateData) {
+func parseElementChildren(parentNode *TmphNode, elementContent string, shouldPreserveWhiteSpace bool, component *Component, templateData *TemplateData, line int, column int) {
 	if elementContent == "" {
 		return
 	}
@@ -35,10 +35,7 @@ func parseElementChildren(parentNode *TmphNode, elementContent string, shouldPre
 
 		if textContent != "" {
 			parentNode.AppendChild(
-				&TmphNode{
-					TextContent: textContent,
-					Position:    textContentStartPosition,
-				},
+				NewTextNode(textContent, textContentStartPosition),
 			)
 		}
 
@@ -49,13 +46,7 @@ func parseElementChildren(parentNode *TmphNode, elementContent string, shouldPre
 		tagStartPosition := cursor.GetPosition()
 		openedTagName, staticAttributes, renderAttributes, isVoid := cursor.ReadOpeningTag()
 
-		newChildNode := &TmphNode{
-			TagName:          openedTagName,
-			StaticAttributes: staticAttributes,
-			RenderAttributes: renderAttributes,
-			Position:         tagStartPosition,
-			Children:         make([]*TmphNode, 0),
-		}
+		newChildNode := NewElementNode(openedTagName, staticAttributes, renderAttributes, tagStartPosition)
 
 		// Grab the line and column that the cursor is at for the start position of the tag's child contents
 		childrenStartLine := cursor.line
@@ -71,7 +62,12 @@ func parseElementChildren(parentNode *TmphNode, elementContent string, shouldPre
 
 		switch newChildNode.TagName {
 		case "template":
-			if isComponentAttrSet, componentName, _ := newChildNode.GetRenderAttribute("component"); isComponentAttrSet && componentName != "" {
+			if isComponentAttrSet, _, _ := newChildNode.GetRenderAttribute("component"); isComponentAttrSet {
+				_, componentName := newChildNode.GetStaticAttribute("id")
+				if componentName == "" {
+					panic("Inline template component at " + newChildNode.Position + " is missing an id attribute")
+				}
+
 				if templateData.InlineComponents == nil {
 					templateData.InlineComponents = make(map[string]*Component)
 				} else if _, ok := templateData.InlineComponents[componentName]; ok {
@@ -86,7 +82,7 @@ func parseElementChildren(parentNode *TmphNode, elementContent string, shouldPre
 					PropTypesJSDoc: "",
 				}
 				templateData.InlineComponents[componentName] = newComponent
-				parseElementChildren(newChildNode, elementChildContent, false, childrenStartLine, childrenStartColumn, newComponent, templateData)
+				parseElementChildren(newChildNode, elementChildContent, false, newComponent, templateData, childrenStartLine, childrenStartColumn)
 			}
 		case "slot":
 			if _, slotName := newChildNode.GetStaticAttribute("name"); slotName != "" {
@@ -96,7 +92,7 @@ func parseElementChildren(parentNode *TmphNode, elementContent string, shouldPre
 			}
 			parentNode.AppendChild(newChildNode)
 			if elementChildContent != "" {
-				parseElementChildren(newChildNode, elementChildContent, shouldPreserveWhiteSpace, childrenStartLine, childrenStartColumn, component, templateData)
+				parseElementChildren(newChildNode, elementChildContent, shouldPreserveWhiteSpace, component, templateData, childrenStartLine, childrenStartColumn)
 			}
 		case "link":
 			isRelSet, rel := newChildNode.GetStaticAttribute("rel")
@@ -151,10 +147,9 @@ func parseElementChildren(parentNode *TmphNode, elementContent string, shouldPre
 			if isRawAttrSet, _, _ := newChildNode.GetRenderAttribute("raw"); isRawAttrSet {
 				// If the style has a #raw attribute, just add it to the node tree without processing it
 				if flattenedStyleContent != "" {
-					newChildNode.AppendChild(&TmphNode{
-						TextContent: flattenedStyleContent,
-						Position:    childrenStartPosition,
-					})
+					newChildNode.AppendChild(
+						NewTextNode(flattenedStyleContent, childrenStartPosition),
+					)
 				}
 				parentNode.AppendChild(newChildNode)
 			} else {
@@ -200,10 +195,9 @@ func parseElementChildren(parentNode *TmphNode, elementContent string, shouldPre
 
 			if shouldAppendToNodeTree {
 				if flattenedScriptContent != "" {
-					newChildNode.AppendChild(&TmphNode{
-						TextContent: flattenedScriptContent,
-						Position:    childrenStartPosition,
-					})
+					newChildNode.AppendChild(
+						NewTextNode(flattenedScriptContent, childrenStartPosition),
+					)
 				}
 				parentNode.AppendChild(newChildNode)
 			} else {
@@ -225,7 +219,7 @@ func parseElementChildren(parentNode *TmphNode, elementContent string, shouldPre
 						bucketName = DEFAULT_BUCKET_NAME
 					}
 
-					_, _, scope := newChildNode.GetRenderAttribute("scope")
+					_, scope, _ := newChildNode.GetRenderAttribute("scope")
 					if scope == "" {
 						// Default to global scope
 						scope = "global"
@@ -265,10 +259,10 @@ func parseElementChildren(parentNode *TmphNode, elementContent string, shouldPre
 					elementChildContent,
 					// Preserve whitespace for pre and textarea tags
 					shouldPreserveWhiteSpace || openedTagName == "pre" || openedTagName == "textarea",
-					childrenStartLine,
-					childrenStartColumn,
 					component,
 					templateData,
+					childrenStartLine,
+					childrenStartColumn,
 				)
 			}
 		}

@@ -1,16 +1,16 @@
 <ul>
   <ListItem #for:item="items" :name="item.name" #text="item.value"></ListItem>
 </ul>
-<template #component="ListItem">
+<template id="ListItem" #component>
   <li>
     <strong #text="`${name}:`"></strong>
     <slot></slot>
   </li>
 </template>
-<template #component="WhackyComponent">
+<template id="WhackyComponent" #component>
   <div>
     <InnerComponent></InnerComponent>
-    <template #component="NestedComponent">
+    <template id="NestedComponent" #component>
       <slot name="before"></slot>
       <div>Why would you do this?!</div>
       <slot name="after"></slot>

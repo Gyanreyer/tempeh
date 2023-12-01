@@ -1,5 +1,20 @@
 package main
 
+type RenderAttribute struct {
+	AttributeName                string `json:"name"`
+	AttributeModifier            string `json:"modifier,omitempty"`
+	ExpressionValue              string `json:"expressionValue,omitempty"`
+	DoesExpressionReferenceProps bool   `json:"doesExpressionReferenceProps,omitempty"`
+	IsExpressionAsync            bool   `json:"isExpressionAsync,omitempty"`
+	Position                     string `json:"position"`
+}
+
+type StaticAttribute struct {
+	AttributeName  string `json:"name"`
+	AttributeValue string `json:"value,omitempty"`
+	Position       string `json:"position"`
+}
+
 type TmphNode struct {
 	TagName          string            `json:"tagName,omitempty"`
 	StaticAttributes []StaticAttribute `json:"staticAttributes,omitempty"`
@@ -23,14 +38,39 @@ func (node *TmphNode) GetStaticAttribute(attributeName string) (isSet bool, valu
 	return false, ""
 }
 
-func (node *TmphNode) GetRenderAttribute(attributeName string) (isSet bool, value string, modifier string) {
+func (node *TmphNode) GetRenderAttribute(attributeName string) (isSet bool, modifier string, value string) {
 	for _, attribute := range node.RenderAttributes {
 		if attribute.AttributeName == attributeName {
-			return true, attribute.AttributeValue, attribute.AttributeModifier
+			return true, attribute.AttributeModifier, attribute.ExpressionValue
 		}
 	}
 
 	return false, "", ""
+}
+
+func NewElementNode(tagName string, staticAttributes []StaticAttribute, renderAttributes []RenderAttribute, position string) *TmphNode {
+	return &TmphNode{
+		TagName:          tagName,
+		StaticAttributes: staticAttributes,
+		RenderAttributes: renderAttributes,
+		Children:         []*TmphNode{},
+		Position:         position,
+	}
+}
+
+func NewTextNode(textContent string, position string) *TmphNode {
+	return &TmphNode{
+		TextContent: textContent,
+		Position:    position,
+	}
+}
+
+func NewRootNode(tagName string, position string) *TmphNode {
+	return &TmphNode{
+		TagName:  tagName,
+		Children: make([]*TmphNode, 0),
+		Position: position,
+	}
 }
 
 type AssetBucketStyle struct {
@@ -51,8 +91,6 @@ type TmphAssetBucket struct {
 	Styles  []AssetBucketStyle  `json:"styles,omitempty"`
 }
 
-type TmphAssetBucketMap map[string]*TmphAssetBucket
-
 type ComponentImport struct {
 	ImportName string `json:"importName,omitempty"`
 	Path       string `json:"path"`
@@ -67,8 +105,9 @@ type Component struct {
 }
 
 type TemplateData struct {
-	MainComponent    *Component            `json:"mainComponent,omitempty"`
-	InlineComponents map[string]*Component `json:"inlineComponents,omitempty"`
-	Assets           TmphAssetBucketMap    `json:"assets,omitempty"`
-	ComponentImports []ComponentImport     `json:"componentImports,omitempty"`
+	SourceFilePath   string                      `json:"sourceFilePath"`
+	MainComponent    *Component                  `json:"mainComponent,omitempty"`
+	InlineComponents map[string]*Component       `json:"inlineComponents,omitempty"`
+	Assets           map[string]*TmphAssetBucket `json:"assets,omitempty"`
+	ComponentImports []ComponentImport           `json:"componentImports,omitempty"`
 }

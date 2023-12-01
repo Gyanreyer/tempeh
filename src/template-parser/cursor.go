@@ -5,19 +5,6 @@ import (
 	"strconv"
 )
 
-type RenderAttribute struct {
-	AttributeName     string `json:"name"`
-	AttributeModifier string `json:"modifier,omitempty"`
-	AttributeValue    string `json:"value,omitempty"`
-	Position          string `json:"position"`
-}
-
-type StaticAttribute struct {
-	AttributeName  string `json:"name"`
-	AttributeValue string `json:"value,omitempty"`
-	Position       string `json:"position"`
-}
-
 func isVoidElement(tagName string) bool {
 	return tagName == "area" || tagName == "base" || tagName == "br" || tagName == "col" || tagName == "embed" || tagName == "hr" || tagName == "img" || tagName == "input" || tagName == "link" || tagName == "meta" || tagName == "param" || tagName == "source" || tagName == "track" || tagName == "wbr"
 }
@@ -324,6 +311,8 @@ func (c *Cursor) ReadOpeningTagAttributes() ([]StaticAttribute, []RenderAttribut
 			break
 		}
 
+		attributeValue := ""
+
 		if isAttributeValueQuoteChar(ch) {
 			// This is a quoted attribute value, so we need to find the closing quote char
 			openingQuoteChar := ch
@@ -339,10 +328,21 @@ func (c *Cursor) ReadOpeningTagAttributes() ([]StaticAttribute, []RenderAttribut
 
 			for err == nil {
 				if ch == openingQuoteChar {
-					prevChar, err := c.Peek(-1)
+					// Check if the quote char is escaped, meaning we should keep going.
+					// We know it's escaped if there's an odd number of escape chars before it.
+					// This is needed to account for possible cases where the escape char is escaped itself.
+					escapeCharCount := 0
+					for peekAmount := -1; c.index-peekAmount >= 0; peekAmount-- {
+						prevChar, _ := c.Peek(peekAmount)
+						if prevChar == '\\' {
+							escapeCharCount++
+						} else {
+							break
+						}
+					}
 
-					// Only stop if the quote char isn't escaped
-					if err == nil && prevChar != '\\' {
+					// If the quote char isn't escaped, break out of the loop
+					if escapeCharCount%2 == 0 {
 						break
 					}
 				}
@@ -350,21 +350,7 @@ func (c *Cursor) ReadOpeningTagAttributes() ([]StaticAttribute, []RenderAttribut
 				ch, err = c.AdvanceChar()
 			}
 
-			attributeValue := c.str[valueStartIndex:c.index]
-			if isRenderAttribute {
-				renderAttributes = append(renderAttributes, RenderAttribute{
-					AttributeName:     attributeName,
-					AttributeModifier: attributeModifier,
-					AttributeValue:    attributeValue,
-					Position:          attributePosition,
-				})
-			} else {
-				staticAttributes = append(staticAttributes, StaticAttribute{
-					AttributeName:  attributeName,
-					AttributeValue: attributeValue,
-					Position:       attributePosition,
-				})
-			}
+			attributeValue = c.str[valueStartIndex:c.index]
 
 			// Skip the closing quote char
 			ch, err = c.AdvanceChar()
@@ -375,21 +361,24 @@ func (c *Cursor) ReadOpeningTagAttributes() ([]StaticAttribute, []RenderAttribut
 				ch, err = c.AdvanceChar()
 			}
 
-			attributeValue := c.str[valueStartIndex:c.index]
-			if isRenderAttribute {
-				renderAttributes = append(renderAttributes, RenderAttribute{
-					AttributeName:     attributeName,
-					AttributeModifier: attributeModifier,
-					AttributeValue:    attributeValue,
-					Position:          attributePosition,
-				})
-			} else {
-				staticAttributes = append(staticAttributes, StaticAttribute{
-					AttributeName:  attributeName,
-					AttributeValue: attributeValue,
-					Position:       attributePosition,
-				})
-			}
+			attributeValue = c.str[valueStartIndex:c.index]
+		}
+
+		if isRenderAttribute {
+			renderAttributes = append(renderAttributes, RenderAttribute{
+				AttributeName:                attributeName,
+				AttributeModifier:            attributeModifier,
+				ExpressionValue:              attributeValue,
+				IsExpressionAsync:            isAsyncExpression(attributeValue),
+				DoesExpressionReferenceProps: doesExpressionReferenceProps(attributeValue),
+				Position:                     attributePosition,
+			})
+		} else {
+			staticAttributes = append(staticAttributes, StaticAttribute{
+				AttributeName:  attributeName,
+				AttributeValue: attributeValue,
+				Position:       attributePosition,
+			})
 		}
 	}
 

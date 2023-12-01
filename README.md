@@ -20,7 +20,7 @@ My initial rough vision would be for templates to be defined in `.tmph.html` fil
 ```html
 <!-- components/List.tmph.html -->
 <ul>
-  <li #for:item="props.items" $textContent="item"></li>
+  <li #for:item="props.items" #text="item"></li>
 </ul>
 ```
 
@@ -379,20 +379,20 @@ This can be useful for pre-computing values which are re-used multiple times in 
 
 ### Template Fragments
 
-You may define a "template fragment" using a `<template>` tag.
-Like the concept of fragments in JSX, the contents of the `<template>` will be included in the final output, but the `<template>`
+You may define a "template fragment" using a `<_>` tag.
+Like the concept of fragments in JSX, the contents of the `<_>` will be included in the final output, but the `<_>`
 tag itself will be removed. This can be useful for scenarios where you want to insert some dynamic
 content without having to wrap it in an extra element.
-Template fragments can still have `$` and `#` template functions applied to them.
+Template fragments can still have `#` template render attributes applied to them.
 
 ```html
 <p>
   Hello! Here is some dynamic text: <template $textContent="props.dynamicText" />
-  <template #if="props.shouldShowSecondLine">
+  <_ #if="props.shouldShowSecondLine">
     <br/>And here's another line of text!
-  </template>
+  </_>
 </p>
-<template #for-range:i="[0, 10]">
+<_ #for-range:i="[0, 10]" #text="i" />
 ```
 
 ## Scripts
@@ -717,19 +717,19 @@ Each `.tmph.html` file can be thought of as a Tempeh component which can be impo
 </ul>
 ```
 
-### Declaring sub-components in the same file with `$component`
+### Declaring sub-components in the same file with `#component`
 
-You can declare sub-components with a `<template>` tag with a `$component` flag. Sub-components can be re-used within
+You can declare sub-components with a `<template>` tag with a `#component` flag. Sub-components can be re-used within
 the component file but can't be imported by other component files. This can be useful if you wish to encapsulate a complex fragment
 which gets re-used in multiple places throughout the component.
 
-The `$component` attribute should take a name for the component. This component name can then be referenced throughout the template.
+The `#component` attribute needs to be paired with an `id` attribute for the name of the component. This component name can then be referenced throughout the template.
 
 ```html
 <!-- List.tmph.html -->
-<template $component="ListItem">
+<template #component id="ListItem">
   <li>
-    <p $textContent="props.item.name"></p>
+    <p #text="props.item.name"></p>
   </li>
 </template>
 
@@ -737,6 +737,13 @@ The `$component` attribute should take a name for the component. This component 
   <ListItem :item="{ name: 'First' }" />
   <ListItem :item="{ name: 'Second' }" />
 </ul>
+```
+
+You may also reference a sub-component in your import by referencing the component ID with a hash on the import path.
+
+```html
+<link rel="import" href="./List.tmph.html#ListItem" />
+<ListItem :item="{ name: 'Hello!' }" />
 ```
 
 ## Markdown

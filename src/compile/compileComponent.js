@@ -5,22 +5,12 @@ import { createReadStream } from "node:fs";
 import readline from "node:readline/promises";
 
 import { parseTemplate } from "./parseTemplate.js";
-import {
-  gatherComponentMeta,
-  cachedMetaCommentStart,
-  makeCachedMetaComment,
-} from "./gatherComponentMeta.js";
+import { cachedMetaCommentStart, makeCachedMetaComment } from "./meta.js";
 import { makeComponentJSdoc } from "./makeComponentJSdoc.js";
 import { convertNodeToRenderString } from "./convertNodeToRenderString.js";
 import { stringifyObjectForRender } from "./stringifyObjectForRender.js";
 import { extractComponentName } from "./extractComponentName.js";
 import processCSS from "./processCSS.js";
-
-/** @typedef {import("./parseTemplate.js").TmphNode} TmphNode */
-/**
- * @typedef {import("./gatherComponentMeta.js").Meta} Meta
- * @typedef {import("./gatherComponentMeta.js").ComponentAssets} ComponentAssets
- */
 
 // Regex to match whether the render string references a props variable
 const propsVariableRegex = /\bprops\b/;
@@ -118,9 +108,8 @@ export async function compileComponent(componentPath, skipCache = false) {
     sourceFilePath: componentPath,
     usesProps: false,
     isAsync: false,
-    hasDefaultSlot: parsedTemplateData.hasDefaultSlot,
-    namedSlots: parsedTemplateData.namedSlots,
   });
+
   // const componentAssets = Object.preventExtensions({
   //   componentImports: null,
   //   inlineComponents: null,
@@ -223,7 +212,7 @@ export async function compileComponent(componentPath, skipCache = false) {
   // Now that all nodes are done rendering, we can combine the root node
   // render strings into a single string
   const renderString = rootNodeRenderStrings.join("\n");
-  meta.usesProps = propsVariableRegex.test(renderString);
+  const usesProps = propsVariableRegex.test(renderString);
 
   const { jsDocString, defaultProps } = makeComponentJSdoc(meta);
 
