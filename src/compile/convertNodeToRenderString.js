@@ -1,12 +1,14 @@
 import renderHTMLAttribute from "../render/renderAttributes.js";
 import md from "../render/md.js";
 import { getRandomString } from "../utils/getRandomString.js";
+import { deepFreeze } from "../utils/deepFreeze.js";
 import { getNodeAttributeValue } from "./getNodeAttributeValue.js";
 import { stringifyObjectForRender } from "./stringifyObjectForRender.js";
 import { makeDynamicRenderStringContent } from "./makeDynamicRenderStringContent.js";
+import { isTmphElementNode } from "./types.js";
 
-/** @typedef {import("./parseTemplate.js").TmphNode} TmphNode */
-/** @typedef {import("./gatherComponentMeta.js").Meta} Meta */
+/** @typedef {import("./types.js").TmphElementNode} TmphElementNode */
+/** @typedef {import("./types.js").TmphTextNode} TmphTextNode */
 
 // HTML tag names that don't have closing tags
 const voidTagNames = {
@@ -27,17 +29,53 @@ const voidTagNames = {
 };
 
 /**
- * @param {TmphNode} node
+ * @param {TmphTextNode|TmphElementNode} node
  * @param {Record<string, string>} imports
- * @param {Meta} meta
+ * @param {import("./types.js").TmphTemplateData} templateData
  * @returns {Promise<string>}
  */
-export async function convertNodeToRenderString(node, imports, meta) {
+export async function convertNodeToRenderString(node, imports, templateData) {
+  if (!isTmphElementNode(node)) {
+    return node.textContent;
+  }
+
+  let scopeLevel = 0;
+
+  /** @type {Array<string>} */
+  let scopeSetupLogic = ['let __tmph__renderedHTML = "";'];
+
+  let scopePrefixes = [""];
+  let scopePostfixes = [""];
+
+  const addScope = (
+    scopePrefix = "return await (async ()=>{",
+    scopePostfix = "})()"
+  ) => {
+    ++scopeLevel;
+    scopeSetupLogic.push("");
+    scopePrefixes.push(scopePrefix);
+    scopePostfixes.push(scopePostfix);
+  };
+
+  /**
+   * @param {string} logicSnippet
+   */
+  const addSetupLogic = (logicSnippet) => {
+    scopeSetupLogic[scopeLevel] += logicSnippet;
+  };
+
   let tagName = node.tagName;
 
-  if (!tagName) {
-    return node.children?.join("\n") ?? "";
-  }
+  const isInlineComponent =
+    templateData.inlineComponents && tagName in templateData.inlineComponents;
+  const isImportedComponent =
+    !isInlineComponent &&
+    templateData.componentImports &&
+    tagName in templateData.componentImports;
+
+  const isComponent = isInlineComponent || isImportedComponent;
+
+  let children = node.children;
 
   /**
    * @type {Array<{ name: "#if" | "#for" | "#for-range" | "#with"; modifier: string; value: string; }> | null}
@@ -48,40 +86,33 @@ export async function convertNodeToRenderString(node, imports, meta) {
   let scopedRenderAttributes = null;
   let shouldParseChildrenAsMarkdown = false;
 
-  /** @type {Record<string, string|true> | null} */
-  let staticAttributes = null;
+  /** @type {Record<string, string>} */
+  const attributes = {};
 
-  /** @type {Record<string, string> | null} */
-  let dynamicAttributes = null;
+  if (node.staticAttributes) {
+    for (const attribute of node.staticAttributes) {
+      attributes[attribute.name] = attribute.value ?? "";
 
-  if (node.attributes) {
+      // renderedAttributesString += ` ${attribute.name}${
+      //   attribute.value ? `="${attribute.value}"` : ""
+      // }`;
+    }
+  }
+
+  if (node.renderAttributes) {
     for (
-      let i = 0, attributesLength = node.attributes.length;
-      i < attributesLength;
-      i += 2
+      let i = 0, attrLength = node.renderAttributes.length;
+      i < attrLength;
+      ++i
     ) {
-      let attributeName = /** @type {string} */ (node.attributes[i]);
-      const attributeValue = node.attributes[i + 1];
+      const attribute = node.renderAttributes[i];
 
-      if (attributeName[0] === ":") {
-        // :attrName is a shorthand for #attr:attrName
-        attributeName = `#attr${attributeName}`;
-      }
-
-      if (attributeName[0] !== "#") {
-        // Pass static attributes through to the output
-        (staticAttributes ??= {})[attributeName] = attributeValue;
-        continue;
-      }
-
-      if (attributeName === "#") {
+      if (attribute.name === "#") {
         // Skip comment attributes
         continue;
       }
 
-      const [baseAttributeName, attributeModifier] = attributeName.split(":");
-
-      switch (baseAttributeName) {
+      switch (attribute.name) {
         case "#md": {
           /**
            * #md
@@ -99,56 +130,62 @@ export async function convertNodeToRenderString(node, imports, meta) {
            * If the expression evaluates to a falsey value, the default tag name will be used.
            * If the expression evaluates to a non-string value, the default tag name will be used.
            */
-          if (typeof attributeValue !== "string") {
+          if (!attribute.expressionValue) {
             console.warn(
-              `${meta.sourceFilePath}: Received #tagname attribute without a tag name expression.`
+              `Received #tagname attribute without a tag name expression. ${templateData.sourceFilePath}:${attribute.position}`
             );
             break;
           }
 
-          const { expressionCode, isAsync } =
-            makeDynamicRenderStringContent(attributeValue);
-          meta.isAsync = meta.isAsync || isAsync;
+          const variableName = `__tmph__tagname__${i}`;
 
-          tagName = `\$\{${expressionCode} ?? "${tagName}"\}`;
+          addSetupLogic(
+            makeDynamicRenderStringContent(
+              variableName,
+              attribute.expressionValue
+            )
+          );
+
+          tagName = `\$\{${variableName} ?? "${tagName}"\}`;
           break;
         }
         case "#attr": {
           /**
            * #attr:attrName="expression"
-           * attributeModifier is the attribute name
-           * attributeValue is the expression which should be evaluated to the attribute's value
+           * attribute.modifier is the attribute name
+           * attribute.expressionValue is the expression which should be evaluated to the attribute's value
            */
-          if (typeof attributeValue !== "string") {
-            // If the attribute doesn't have a value, just set it as a static boolean attribute
-            staticAttributes ??= {};
-            staticAttributes[attributeModifier] = true;
-            console.warn(
-              `${meta.sourceFilePath}: Received #attr:${attributeModifier} without an attribute value expression.`
+          const { modifier, expressionValue, position } = attribute;
+
+          if (!modifier) {
+            console.error(
+              `Recieved #attr attribute without an attribute name. ${templateData.sourceFilePath}:${position}`
             );
             break;
           }
 
-          const { expressionCode, isAsync } =
-            makeDynamicRenderStringContent(attributeValue);
-          meta.isAsync = meta.isAsync || isAsync;
+          if (!expressionValue) {
+            // If the attribute doesn't have a value, just set as a static boolean attribute
+            attributes[modifier] = "";
+            console.warn(
+              `Received #attr:${attribute.modifier} without an attribute value expression. ${templateData.sourceFilePath}:${position}`
+            );
+            break;
+          }
 
-          dynamicAttributes ??= {};
+          const variableName =
+            modifier === "..."
+              ? `__tmph__spreadableAttr__${i}`
+              : `__tmph__attr_${modifier}__${i}`;
 
-          // Attribute spreading syntax means the attribute value should be an object
-          // and we should spread the object's properties into the element's attributes
-          if (attributeModifier === "...") {
-            const resultVariableName = `__tmph_result_${getRandomString()}`;
-            dynamicAttributes["..."] = `${isAsync ? "await (async " : "("}()=>{
-              const ${resultVariableName} = ${expressionCode};
-              if(typeof ${resultVariableName} !== "object") {
-                console.warn(\`Attempted to spread non-object value \$\{${resultVariableName}\} onto element attributes\`);
-                return {};
-              }
-              return ${resultVariableName};
-            })()`;
+          addSetupLogic(
+            makeDynamicRenderStringContent(variableName, expressionValue)
+          );
+
+          if (isComponent) {
+            attributes[modifier] = variableName;
           } else {
-            dynamicAttributes[attributeModifier] = expressionCode;
+            attributes[modifier] = `\${${variableName}}`;
           }
 
           break;
@@ -159,32 +196,34 @@ export async function convertNodeToRenderString(node, imports, meta) {
            * attributeValue is the expression which should be evaluated to an escaped string which will
            * replace the element's children.
            */
-          if (typeof attributeValue !== "string") {
-            console.warn(
-              `${meta.sourceFilePath}: Received #text attribute without an expression value`
+          const { expressionValue, position } = attribute;
+          if (!expressionValue) {
+            console.error(
+              `Recieved #text attribute without an expression value. ${templateData.sourceFilePath}:${position}`
             );
-            continue;
+            break;
           }
 
-          const { expressionCode, isAsync } =
-            makeDynamicRenderStringContent(attributeValue);
-          meta.isAsync = meta.isAsync || isAsync;
+          const variableName = `__tmph__text__${i}`;
 
           imports.escapeText = "#tmph/render/escapeText.js";
 
-          if (!node.children || node.children.length === 0) {
-            node.children = Object.preventExtensions([
-              `\$\{escapeText(${expressionCode})\}`,
-            ]);
-          } else {
-            node.children.splice(
-              0,
-              node.children.length,
-              `\$\{escapeText(${expressionCode})\}`
-            );
-          }
+          addSetupLogic(
+            makeDynamicRenderStringContent(
+              variableName,
+              `
+${makeDynamicRenderStringContent("__tmph__unescapedText", expressionValue)}
+return escapeText(__tmph__unescapedText);
+            `
+            )
+          );
 
-          break;
+          children = deepFreeze([
+            {
+              textContent: `\${${variableName}}`,
+              position: attribute.position,
+            },
+          ]);
         }
         case "#html": {
           /**
@@ -192,100 +231,175 @@ export async function convertNodeToRenderString(node, imports, meta) {
            * attributeValue is the expression which should be evaluated to an HTML content string which will
            * replace the element's children without being escaped.
            */
-          if (typeof attributeValue !== "string") {
-            console.warn(
-              `${meta.sourceFilePath}: Received #html attribute without an expression value`
+          const { expressionValue, position } = attribute;
+          if (!expressionValue) {
+            console.error(
+              `Recieved #html attribute without an expression value. ${templateData.sourceFilePath}:${position}`
             );
             break;
           }
 
-          const { expressionCode, isAsync } =
-            makeDynamicRenderStringContent(attributeValue);
-          meta.isAsync = meta.isAsync || isAsync;
+          const variableName = `__tmph__html__${i}`;
 
-          imports.html = "#tmph/render/html.js";
-
-          if (!node.children || node.children.length === 0) {
-            node.children = Object.preventExtensions([
-              `\$\{html(${expressionCode})\}`,
-            ]);
-          } else {
-            node.children.splice(
-              0,
-              node.children.length,
-              `\$\{html(${expressionCode})\}`
-            );
-          }
-
-          break;
-        }
-        case "#with":
-        case "#if":
-        case "#for":
-        case "#for-range": {
-          if (typeof attributeValue !== "string") {
-            // Continue to the default error case if the attribute value is not a string
-            continue;
-          }
-
-          (scopedRenderAttributes ??= []).push({
-            name: baseAttributeName,
-            modifier: attributeModifier,
-            value: attributeValue,
-          });
-          break;
-        }
-
-        default:
-          console.error(
-            `Received invalid render attribute ${attributeName}${
-              attributeValue === true ? "" : `=${attributeValue}`
-            }. Check for typos.`
+          addSetupLogic(
+            makeDynamicRenderStringContent(variableName, expressionValue)
           );
+
+          children = deepFreeze([
+            {
+              textContent: `\${${variableName}}`,
+              position: attribute.position,
+            },
+          ]);
+
+          break;
+        }
+        case "#if": {
+          const { expressionValue, position } = attribute;
+
+          if (!expressionValue) {
+            console.error(
+              `Received #if attribute without an expression value ${templateData.sourceFilePath}:${position}`
+            );
+            break;
+          }
+
+          const variableName = `__tmph__ifCondition__${i}`;
+
+          addSetupLogic(
+            `
+${makeDynamicRenderStringContent(variableName, expressionValue)}
+if(!${variableName}) {
+  return "";
+}
+`
+          );
+          break;
+        }
+        case "#with": {
+          const { modifier, expressionValue, position } = attribute;
+
+          if (!modifier) {
+            console.error(
+              `Received #with attribute without a variable name modifier ${templateData.sourceFilePath}:${position}`
+            );
+            break;
+          }
+
+          if (!expressionValue) {
+            console.error(
+              `Received #with attribute without an expression value ${templateData.sourceFilePath}:${position}`
+            );
+            break;
+          }
+
+          addSetupLogic(
+            makeDynamicRenderStringContent(modifier, expressionValue)
+          );
+        }
+        case "#for": {
+          const {
+            modifier = `__tmph__forItemValue__${i}`,
+            expressionValue,
+            position,
+          } = attribute;
+
+          if (!expressionValue) {
+            console.error(
+              `Received #for attribute without an expression value ${templateData.sourceFilePath}:${position}`
+            );
+            break;
+          }
+
+          const [
+            itemValueVariableName,
+            itemIndexVariableName = `__tmph__forItemIndex__${i}`,
+          ] = modifier.split(",");
+
+          const itemIterableVariableName = `__tmph__forItemIterable__${i}`;
+
+          addSetupLogic(
+            makeDynamicRenderStringContent(
+              itemIterableVariableName,
+              expressionValue
+            )
+          );
+
+          const itemPromisesVariableName = `__tmph__forItemPromises__${i}`;
+          addSetupLogic(`const ${itemPromisesVariableName} = [];`);
+
+          const forHTMLVariableName = `__tmph__forHTML__${i}`;
+
+          addScope(
+            `
+for(const ${itemValueVariableName} of ${itemIterableVariableName}) {
+  ${itemPromisesVariableName}.push((async () => {
+          `,
+            `
+  })());
+  ${itemIndexVariableName}++;
+}
+
+const results = await Promise.allSettled(${itemPromisesVariableName});
+let ${forHTMLVariableName} = "";
+for(const result of results) {
+  if(result.status === "fulfilled") {
+    ${forHTMLVariableName} += result.value;
+  } else {
+    console.error("An error occurred inside #for loop ${templateData.sourceFilePath}:${position}", result.reason);
+  }
+}
+return ${forHTMLVariableName};
+`
+          );
+        }
+        case "#for-range": {
+          const {
+            modifier = `__tmph__forRangeIndex__${i}`,
+            expressionValue,
+            position,
+          } = attribute;
+
+          if (!expressionValue) {
+            console.error(
+              `Received #for-range attribute without an expression value ${templateData.sourceFilePath}:${position}`
+            );
+            break;
+          }
+
+          const itemIterableVariableName = `__tmph__forItemIterable__${i}`;
+
+          imports.renderForRange = "#tmph/render/renderForRange.js";
+
+          addSetupLogic(
+            makeDynamicRenderStringContent(
+              itemIterableVariableName,
+              expressionValue
+            )
+          );
+
+          addScope(
+            `return renderForRange(${itemIterableVariableName}, async (${modifier}) => {\n`,
+            `\n});`
+          );
+        }
+        default:
       }
     }
   }
 
   let renderedElement = "";
 
-  const isImportedComponent =
-    meta.componentImports && tagName in meta.componentImports;
-  const isInlineComponent =
-    !isImportedComponent &&
-    meta.inlineComponents &&
-    tagName in meta.inlineComponents;
-
-  if (isImportedComponent || isInlineComponent) {
-    const componentMeta = isImportedComponent
-      ? meta.componentImports?.[tagName].meta
-      : meta.inlineComponents?.[tagName].meta;
-
+  if (isComponent) {
     let propsString = "";
 
-    if (staticAttributes) {
-      for (const attributeName in staticAttributes) {
+    for (const attributeName in attributes) {
+      if (attributeName === "...") {
+        propsString += `...${JSON.stringify(attributes[attributeName])},`;
+      } else {
         propsString += `${attributeName}: ${JSON.stringify(
-          staticAttributes[attributeName]
+          attributes[attributeName]
         )},`;
-      }
-    }
-
-    if (dynamicAttributes) {
-      /** @type {string | null} */
-      let spreadAttribute = null;
-
-      for (const attributeName in dynamicAttributes) {
-        if (attributeName === "...") {
-          spreadAttribute = /** @type {string} */ (
-            dynamicAttributes[attributeName]
-          );
-        } else {
-          propsString += `${attributeName}: ${dynamicAttributes[attributeName]},`;
-        }
-      }
-
-      if (spreadAttribute) {
-        propsString += `...${spreadAttribute},`;
       }
     }
 
@@ -294,21 +408,21 @@ export async function convertNodeToRenderString(node, imports, meta) {
     /** @type {Record<string, Promise<string>[]> | null} */
     let namedSlots = null;
 
-    if (node.children) {
-      for (const child of node.children) {
+    if (children) {
+      for (const child of children) {
         if (typeof child === "string") {
           (defaultSlotContent ??= []).push(child);
         } else {
-          if (typeof staticAttributes?.slot === "string") {
-            const slotName = staticAttributes.slot;
+          if (attributes.slot) {
+            const slotName = attributes.slot;
             // Delete the slot attribute so it doesn't get rendered
-            delete staticAttributes.slot;
+            delete attributes.slot;
             ((namedSlots ??= {})[slotName] ??= []).push(
-              convertNodeToRenderString(child, imports, meta)
+              convertNodeToRenderString(child, imports, templateData)
             );
           } else {
             (defaultSlotContent ??= []).push(
-              convertNodeToRenderString(child, imports, meta)
+              convertNodeToRenderString(child, imports, templateData)
             );
           }
         }
@@ -355,47 +469,32 @@ export async function convertNodeToRenderString(node, imports, meta) {
       renderParams.namedSlots = stringifiedNamedSlots;
     }
 
-    renderedElement = `\$\{${
-      componentMeta?.isAsync ? "await" : ""
-    }${tagName}.render(${stringifyObjectForRender(renderParams)})\}`;
+    renderedElement = `\$\{await ${tagName}.render(${stringifyObjectForRender(
+      renderParams
+    )})\}`;
   } else {
     const isFragment = tagName === "_";
 
     if (!isFragment) {
       let attributesString = "";
 
-      for (const attributeName in staticAttributes) {
-        attributesString += await renderHTMLAttribute(
-          attributeName,
-          staticAttributes[attributeName]
-        );
-      }
-
-      for (const attributeName in dynamicAttributes) {
-        imports.renderAttributeToString = "#tmph/render/renderAttributes.js";
-
-        const attributeValue = dynamicAttributes[attributeName];
-        const isAsync = attributeValue.startsWith("await");
-
+      for (const attributeName in attributes) {
         if (attributeName === "...") {
-          const valueName = `__tmph_value_${getRandomString()}`;
-          const keyName = `__tmph_key_${getRandomString()}`;
-          const resultName = `__tmph_result_${getRandomString()}`;
-
-          attributesString += `\$\{${isAsync ? "await (async " : "("}()=> {
-            let ${resultName} = "";
-
-            const ${valueName} = ${attributeValue};
-            for(const ${keyName} in ${valueName}){
-              ${resultName} += \` \$\{renderAttributeToString(${keyName}, ${valueName}[${keyName}])\}\`;
-            }
-            return ${resultName};
-          })()\}`;
+          const spreadableObjectVariableName = attributes[attributeName];
+          const variableName = `${spreadableObjectVariableName}_attrString`;
+          addSetupLogic(`
+let ${variableName} = "";
+for(const __tmph__spreadAttrName in ${spreadableObjectVariableName}) {
+  ${variableName} += \` \${__tmph__spreadAttrName}\${
+    ${spreadableObjectVariableName} ? "" :
+    \\\`="\${${spreadableObjectVariableName}[\${__tmph__spreadAttrName}]
+  }"\\\`\`
+}
+`);
         } else {
-          attributesString += `\$\{renderAttributeToString(
-            "${attributeName}",
-            ${dynamicAttributes[attributeName]},
-          )\}`;
+          attributesString += ` ${attributeName}${
+            attributes[attributeName] ? "" : `="${attributes[attributeName]}"`
+          }`;
         }
       }
 
@@ -405,37 +504,37 @@ export async function convertNodeToRenderString(node, imports, meta) {
     /** @type {string} */
     let childrenString = "";
 
-    if (node.children) {
-      const childCount = node.children.length;
+    if (children) {
+      const childCount = children.length;
       /** @type {Array<string | Promise<string>>} */
       const childRenderPromises = new Array(childCount);
-      const childStringArray = new Array(childCount);
 
       for (let i = 0; i < childCount; ++i) {
-        const child = node.children[i];
+        const child = children[i];
 
         if (typeof child === "string") {
-          childStringArray[i] = child;
+          childRenderPromises[i] = child;
         } else {
-          if (child.tagName === "slot") {
-            const slotName = getNodeAttributeValue(child, "name");
+          if ("tagName" in child && child.tagName === "slot") {
+            const slotName = child.staticAttributes?.find(
+              (attr) => attr.name === "name"
+            )?.value;
             if (slotName) {
-              childStringArray[i] = `\$\{namedSlots?.${slotName} ?? ""\}`;
+              childRenderPromises[i] = `\$\{namedSlots?.${slotName} ?? ""\}`;
             } else {
-              childStringArray[i] = `\$\{slot ?? ""\}`;
+              childRenderPromises[i] = `\$\{slot ?? ""\}`;
             }
           } else {
-            childRenderPromises.push(
-              convertNodeToRenderString(child, imports, meta).then(
-                (str) => (childStringArray[i] = str)
-              )
+            childRenderPromises[i] = convertNodeToRenderString(
+              child,
+              imports,
+              templateData
             );
           }
         }
       }
 
-      await Promise.all(childRenderPromises);
-      childrenString = childStringArray.join("");
+      childrenString = (await Promise.all(childRenderPromises)).join("");
     }
 
     if (childrenString && shouldParseChildrenAsMarkdown) {
@@ -466,87 +565,16 @@ export async function convertNodeToRenderString(node, imports, meta) {
     }
   }
 
-  if (scopedRenderAttributes) {
-    // Evaluating scoped render attributes in reverse order so the innermost scope is evaluated first
-    for (const attribute of scopedRenderAttributes.reverse()) {
-      switch (attribute.name) {
-        case "#with": {
-          if (!attribute.modifier) {
-            console.error(`#with attribute requires a modifier`);
-            continue;
-          }
+  let renderString = "";
 
-          const { expressionCode, isAsync } = makeDynamicRenderStringContent(
-            attribute.value
-          );
-          meta.isAsync = meta.isAsync || isAsync;
-
-          renderedElement = `\$\{${isAsync ? "await (async " : "("}()=>{
-            let ${attribute.modifier} = ${expressionCode};
-            return \`${renderedElement}\`;
-          })()\}`;
-          break;
-        }
-        case "#if": {
-          const { expressionCode, isAsync } = makeDynamicRenderStringContent(
-            attribute.value
-          );
-          meta.isAsync = meta.isAsync || isAsync;
-
-          renderedElement = `\$\{${expressionCode} ? \`${renderedElement}\` : ""\}`;
-          break;
-        }
-        case "#for": {
-          const { expressionCode, isAsync } = makeDynamicRenderStringContent(
-            attribute.value
-          );
-          meta.isAsync = meta.isAsync || isAsync;
-
-          const itemListVariableName = `__tmph_items_${getRandomString()}`;
-
-          const [
-            itemName = `__tmph_item_${getRandomString()}`,
-            indexName = `__tmph_index_${getRandomString()}`,
-          ] = attribute.modifier.split(",");
-
-          const renderStringVariableName = `__tmph_render_${getRandomString()}`;
-
-          renderedElement = `\$\{${isAsync ? "await (async " : "("}()=> {
-                const ${itemListVariableName} = ${expressionCode};
-                let ${renderStringVariableName} = "";
-                let ${indexName} = 0;
-                for(const ${itemName} of ${itemListVariableName}){
-                  ${renderStringVariableName} += \`${renderedElement}\`;
-                  ++${indexName};
-                }
-                return \`${renderStringVariableName}\`;
-              })()\}`;
-          break;
-        }
-        case "#for-range": {
-          const { expressionCode, isAsync } = makeDynamicRenderStringContent(
-            attribute.value
-          );
-          meta.isAsync = meta.isAsync || isAsync;
-
-          const itemListVariableName = `__tmph_items_${getRandomString()}`;
-
-          const itemName =
-            attribute.modifier || `__tmph_item_${getRandomString()}`;
-
-          imports.renderForRange = "#tmph/render/renderForRange.js";
-
-          renderedElement = `\$\{${isAsync ? "await (async " : "("}()=> {
-                const ${itemListVariableName} = ${expressionCode};
-                return renderForRange(${itemListVariableName}, (${itemName}) => {
-                  return \`${renderedElement}\`;
-                });
-              })()\}`;
-          break;
-        }
-      }
+  for (let i = scopeLevel; i >= 0; --i) {
+    renderString += scopePrefixes[i];
+    renderString += scopeSetupLogic[i];
+    if (i === 0) {
+      renderString += renderedElement;
     }
+    renderString += scopePostfixes[i];
   }
 
-  return renderedElement;
+  return renderString;
 }

@@ -109,5 +109,5 @@ type TemplateData struct {
 	MainComponent    *Component                  `json:"mainComponent,omitempty"`
 	InlineComponents map[string]*Component       `json:"inlineComponents,omitempty"`
 	Assets           map[string]*TmphAssetBucket `json:"assets,omitempty"`
-	ComponentImports []ComponentImport           `json:"componentImports,omitempty"`
+	ComponentImports map[string]*ComponentImport `json:"componentImports,omitempty"`
 }

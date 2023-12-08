@@ -5,15 +5,18 @@
 /**
  *
  * @param {RenderRange} range
- * @param {(index: number) => string} render
- * @returns {string}
+ * @param {(index: number) => Promise<string>} render
+ * @returns {Promise<string>}
  */
-export default function renderForRange(range, render) {
+export default async function renderForRange(range, render) {
   if (!Array.isArray(range)) {
     throw new Error(`Received invalid range array: ${JSON.stringify(range)}`);
   }
 
-  let outputString = "";
+  /**
+   * @type {Promise<string>[]}
+   */
+  let outputPromises = [];
 
   if (typeof range[0] === "number") {
     /** @type {number} */
@@ -37,14 +40,25 @@ export default function renderForRange(range, render) {
       incrementValue > 0 ? i <= rangeEnd : i >= rangeEnd;
       i += incrementValue
     ) {
-      outputString += render(i);
+      outputPromises.push(render(i));
     }
   } else if (Array.isArray(range[0])) {
     for (const subRange of range) {
-      outputString += renderForRange(
-        /** @type {RenderRange} */ (subRange),
-        render
+      outputPromises.push(
+        renderForRange(/** @type {RenderRange} */ (subRange), render)
       );
+    }
+  }
+
+  let outputString = "";
+
+  const results = await Promise.allSettled(outputPromises);
+
+  for (const result of results) {
+    if (result.status === "fulfilled") {
+      outputString += result.value;
+    } else {
+      console.error(result.reason);
     }
   }
 

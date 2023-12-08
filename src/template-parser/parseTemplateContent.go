@@ -1,5 +1,13 @@
 package main
 
+import (
+	"path/filepath"
+	"strings"
+
+	"golang.org/x/text/cases"
+	"golang.org/x/text/language"
+)
+
 const DEFAULT_BUCKET_NAME = "default"
 
 func isRelativePath(path string) bool {
@@ -11,7 +19,7 @@ func parseElementChildren(parentNode *TmphNode, elementContent string, shouldPre
 		return
 	}
 
-	cursor := NewCursor(elementContent, line, column)
+	cursor := NewTemplateReader(elementContent, line, column)
 
 	for !cursor.IsAtEnd() {
 		textContentStartPosition := cursor.GetPosition()
@@ -62,7 +70,7 @@ func parseElementChildren(parentNode *TmphNode, elementContent string, shouldPre
 
 		switch newChildNode.TagName {
 		case "template":
-			if isComponentAttrSet, _, _ := newChildNode.GetRenderAttribute("component"); isComponentAttrSet {
+			if isComponentAttrSet, _, _ := newChildNode.GetRenderAttribute("#component"); isComponentAttrSet {
 				_, componentName := newChildNode.GetStaticAttribute("id")
 				if componentName == "" {
 					panic("Inline template component at " + newChildNode.Position + " is missing an id attribute")
@@ -102,19 +110,27 @@ func parseElementChildren(parentNode *TmphNode, elementContent string, shouldPre
 				if rel == "import" {
 					_, importName := newChildNode.GetStaticAttribute("as")
 
-					templateData.ComponentImports = append(
-						templateData.ComponentImports,
-						ComponentImport{
-							ImportName: importName,
-							Path:       href,
-							Position:   newChildNode.Position,
-						},
-					)
+					if importName == "" {
+						caser := cases.Title(language.Und)
+						importedFileName := caser.String(filepath.Base(href))
+						firstDotIndex := strings.IndexRune(importedFileName, '.')
+						if firstDotIndex != -1 {
+							importName = importedFileName[:firstDotIndex]
+						} else {
+							importName = importedFileName
+						}
+					}
+
+					templateData.ComponentImports[importName] = &ComponentImport{
+						ImportName: importName,
+						Path:       href,
+						Position:   newChildNode.Position,
+					}
 					break
 				} else if rel == "stylesheet" {
 					// If this is a relative import of a stylesheet file, add it to the asset bucket
 					if isRelativePath(href) {
-						_, bucketName, _ := newChildNode.GetRenderAttribute("bucket")
+						_, bucketName, _ := newChildNode.GetRenderAttribute("#bucket")
 						if bucketName == "" {
 							bucketName = DEFAULT_BUCKET_NAME
 						}
@@ -144,7 +160,7 @@ func parseElementChildren(parentNode *TmphNode, elementContent string, shouldPre
 				false, true, true,
 			)
 
-			if isRawAttrSet, _, _ := newChildNode.GetRenderAttribute("raw"); isRawAttrSet {
+			if isRawAttrSet, _, _ := newChildNode.GetRenderAttribute("#raw"); isRawAttrSet {
 				// If the style has a #raw attribute, just add it to the node tree without processing it
 				if flattenedStyleContent != "" {
 					newChildNode.AppendChild(
@@ -153,7 +169,7 @@ func parseElementChildren(parentNode *TmphNode, elementContent string, shouldPre
 				}
 				parentNode.AppendChild(newChildNode)
 			} else {
-				_, bucketName, _ := newChildNode.GetRenderAttribute("bucket")
+				_, bucketName, _ := newChildNode.GetRenderAttribute("#bucket")
 				if bucketName == "" {
 					// If the style doesn't have a bucket attribute, we'll use the default bucket
 					bucketName = DEFAULT_BUCKET_NAME
@@ -178,10 +194,10 @@ func parseElementChildren(parentNode *TmphNode, elementContent string, shouldPre
 			// Whether the script should be appended to the node tree instead of being added to an asset bucket for processing
 			shouldAppendToNodeTree := false
 
-			if isRawAttrSet, _, _ := newChildNode.GetRenderAttribute("raw"); isRawAttrSet {
+			if isRawAttrSet, _, _ := newChildNode.GetRenderAttribute("#raw"); isRawAttrSet {
 				// If the style has a #raw attribute, keep it in the node tree as-is without processing
 				shouldAppendToNodeTree = true
-			} else if isRenderAttrSet, _, _ := newChildNode.GetRenderAttribute("render"); isRenderAttrSet {
+			} else if isRenderAttrSet, _, _ := newChildNode.GetRenderAttribute("#render"); isRenderAttrSet {
 				// If the script has a #render attribute, we'll want to add it to the node tree;
 				// the tag will not be included in the rendered output, but its position in the tree matters because its contents
 				// will be placed in the compiled component's render function logic
@@ -213,13 +229,13 @@ func parseElementChildren(parentNode *TmphNode, elementContent string, shouldPre
 				}
 
 				if src != "" || flattenedScriptContent != "" {
-					_, bucketName, _ := newChildNode.GetRenderAttribute("bucket")
+					_, bucketName, _ := newChildNode.GetRenderAttribute("#bucket")
 					if bucketName == "" {
 						// If the script doesn't have a bucket attribute, we'll use the default bucket
 						bucketName = DEFAULT_BUCKET_NAME
 					}
 
-					_, scope, _ := newChildNode.GetRenderAttribute("scope")
+					_, scope, _ := newChildNode.GetRenderAttribute("#scope")
 					if scope == "" {
 						// Default to global scope
 						scope = "global"

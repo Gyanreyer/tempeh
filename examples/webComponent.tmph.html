@@ -1,0 +1,16 @@
+<meta name="compileTarget" value="CustomElement" />
+<template>
+  <div $text="count">0</div>
+</template>
+<script #web-component>
+  import { TmphElement } from "@tmph/core";
+
+  export default class MyComponentName extends TmphElement {
+    static #state = {
+      count: {
+        attributeName: "data-count",
+        defaultValue: 0,
+      },
+    };
+  }
+</script>

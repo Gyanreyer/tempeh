@@ -16,7 +16,7 @@
 <script>
   console.log("This is a global script!");
 </script>
-<script #render>
+<script #render #="this is a comment!">
   export const num = Math.random();
   export function render() {
     return `<button>Click me!</button>`;

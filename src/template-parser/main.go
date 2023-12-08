@@ -56,7 +56,7 @@ func parseTemplateFile(templateFilePath string) (parsedJSON []byte, err error) {
 		MainComponent:    mainComponent,
 		InlineComponents: make(map[string]*Component),
 		Assets:           make(map[string]*TmphAssetBucket),
-		ComponentImports: make([]ComponentImport, 0),
+		ComponentImports: make(map[string]*ComponentImport),
 	}
 
 	parseElementChildren(rootNode, fileStr, false, mainComponent, templateData, 1, 1)

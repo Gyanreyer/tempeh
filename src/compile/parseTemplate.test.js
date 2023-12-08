@@ -5,7 +5,7 @@ import { resolveRelativePath } from "../utils/resolveRelativePath.js";
 import { parseTemplate } from "./parseTemplate.js";
 import { stopTemplateParserServer } from "./templateParserServer.js";
 
-/** @typedef {import("./parseTemplate.js").TmphTemplateData} TmphTemplateData */
+/** @typedef {import("./types.js").TmphTemplateData} TmphTemplateData */
 
 describe("parseTemplate", () => {
   after(() => {
@@ -198,19 +198,19 @@ describe("parseTemplate", () => {
                     position: "2:3",
                     renderAttributes: [
                       {
-                        name: "for",
+                        name: "#for",
                         modifier: "item",
                         expressionValue: "items",
                         position: "2:14",
                       },
                       {
-                        name: "attr",
+                        name: "#attr",
                         modifier: "name",
                         expressionValue: "item.name",
                         position: "2:32",
                       },
                       {
-                        name: "text",
+                        name: "#text",
                         expressionValue: "item.value",
                         position: "2:50",
                       },
@@ -237,7 +237,7 @@ describe("parseTemplate", () => {
                       position: "6:5",
                       renderAttributes: [
                         {
-                          name: "text",
+                          name: "#text",
                           expressionValue: "`${name}:`",
                           position: "6:14",
                         },
@@ -256,7 +256,7 @@ describe("parseTemplate", () => {
               ],
               renderAttributes: [
                 {
-                  name: "component",
+                  name: "#component",
                   position: "4:26",
                 },
               ],
@@ -292,7 +292,7 @@ describe("parseTemplate", () => {
               ],
               renderAttributes: [
                 {
-                  name: "component",
+                  name: "#component",
                   position: "10:33",
                 },
               ],
@@ -354,7 +354,7 @@ describe("parseTemplate", () => {
               ],
               renderAttributes: [
                 {
-                  name: "component",
+                  name: "#component",
                   position: "13:37",
                 },
               ],
@@ -428,7 +428,7 @@ describe("parseTemplate", () => {
                 position: "22:1",
                 renderAttributes: [
                   {
-                    name: "raw",
+                    name: "#raw",
                     position: "22:9",
                   },
                 ],
@@ -509,15 +509,20 @@ describe("parseTemplate", () => {
                 position: "19:1",
                 renderAttributes: [
                   {
-                    name: "render",
+                    name: "#render",
                     position: "19:10",
+                  },
+                  {
+                    name: "#",
+                    expressionValue: "this is a comment!",
+                    position: "19:18",
                   },
                 ],
                 children: [
                   {
                     textContent:
                       "export const num = Math.random();\n  export function render() {\n    return `<button>Click me!</button>`;\n  }",
-                    position: "19:17",
+                    position: "19:40",
                   },
                 ],
               },
