@@ -2,7 +2,6 @@ package main
 
 import (
 	"errors"
-	"strconv"
 )
 
 func isVoidElement(tagName string) bool {
@@ -97,10 +96,6 @@ func (c *TemplateReader) AdvanceChar(amount ...int) (newChar rune, err error) {
 
 func (c *TemplateReader) IsAtEnd() bool {
 	return c.index > c.maxIndex
-}
-
-func (c *TemplateReader) GetPosition() string {
-	return strconv.Itoa(c.line) + ":" + strconv.Itoa(c.column)
 }
 
 func (c *TemplateReader) SkipWhiteSpace() (rune, error) {
@@ -212,10 +207,7 @@ func (c *TemplateReader) ReadTagName() string {
 	return c.str[startIndex:c.index]
 }
 
-func (c *TemplateReader) ReadOpeningTagAttributes() ([]StaticAttribute, []RenderAttribute) {
-	var staticAttributes []StaticAttribute = nil
-	var renderAttributes []RenderAttribute = nil
-
+func (c *TemplateReader) ReadOpeningTagAttributes() (staticAttributes []*StaticAttribute, renderAttributes []*RenderAttribute) {
 	ch, err := c.CurrentChar()
 
 	for err == nil && !isEndOfTagChar(ch) {
@@ -239,14 +231,15 @@ func (c *TemplateReader) ReadOpeningTagAttributes() ([]StaticAttribute, []Render
 		}
 
 		if isRenderAttribute && renderAttributes == nil {
-			renderAttributes = []RenderAttribute{}
+			renderAttributes = make([]*RenderAttribute, 0, 1)
 		} else if !isRenderAttribute && staticAttributes == nil {
-			staticAttributes = []StaticAttribute{}
+			staticAttributes = make([]*StaticAttribute, 0, 1)
 		}
 
 		attributeNameStartIndex := c.index
 		// Track the line/column position of the attribute for error logging
-		attributePosition := c.GetPosition()
+		attributePosLine := c.line
+		attributePosColumn := c.column
 
 		for err == nil && isLegalTagOrAttributeNameChar(ch) {
 			if isRenderAttribute && (ch == ':') {
@@ -284,14 +277,14 @@ func (c *TemplateReader) ReadOpeningTagAttributes() ([]StaticAttribute, []Render
 				// If we hit the end of the file before reaching an attribute value,
 				// call the value an empty string
 				if isRenderAttribute {
-					renderAttributes = append(renderAttributes, RenderAttribute{
+					renderAttributes = append(renderAttributes, &RenderAttribute{
 						AttributeName: attributeName, AttributeModifier: attributeModifier,
-						Position: attributePosition,
+						Line: attributePosLine, Column: attributePosColumn,
 					})
 				} else {
-					staticAttributes = append(staticAttributes, StaticAttribute{
+					staticAttributes = append(staticAttributes, &StaticAttribute{
 						AttributeName: attributeName,
-						Position:      attributePosition,
+						Line:          attributePosLine, Column: attributePosColumn,
 					})
 				}
 				break
@@ -350,17 +343,17 @@ func (c *TemplateReader) ReadOpeningTagAttributes() ([]StaticAttribute, []Render
 		}
 
 		if isRenderAttribute {
-			renderAttributes = append(renderAttributes, RenderAttribute{
+			renderAttributes = append(renderAttributes, &RenderAttribute{
 				AttributeName:     "#" + attributeName,
 				AttributeModifier: attributeModifier,
 				ExpressionValue:   attributeValue,
-				Position:          attributePosition,
+				Line:              attributePosLine, Column: attributePosColumn,
 			})
 		} else {
-			staticAttributes = append(staticAttributes, StaticAttribute{
+			staticAttributes = append(staticAttributes, &StaticAttribute{
 				AttributeName:  attributeName,
 				AttributeValue: attributeValue,
-				Position:       attributePosition,
+				Line:           attributePosLine, Column: attributePosColumn,
 			})
 		}
 	}
@@ -368,7 +361,7 @@ func (c *TemplateReader) ReadOpeningTagAttributes() ([]StaticAttribute, []Render
 	return staticAttributes, renderAttributes
 }
 
-func (c *TemplateReader) ReadOpeningTag() (string, []StaticAttribute, []RenderAttribute, bool) {
+func (c *TemplateReader) ReadOpeningTag() (tagName string, staticAttributes []*StaticAttribute, renderAttributes []*RenderAttribute, isVoid bool) {
 	ch, err := c.CurrentChar()
 
 	// If cursor is on the "<" char, skip it
@@ -376,9 +369,9 @@ func (c *TemplateReader) ReadOpeningTag() (string, []StaticAttribute, []RenderAt
 		c.AdvanceChar()
 	}
 
-	tagName := c.ReadTagName()
+	tagName = c.ReadTagName()
 
-	staticAttributes, renderAttributes := c.ReadOpeningTagAttributes()
+	staticAttributes, renderAttributes = c.ReadOpeningTagAttributes()
 
 	ch, err = c.CurrentChar()
 
@@ -390,7 +383,9 @@ func (c *TemplateReader) ReadOpeningTag() (string, []StaticAttribute, []RenderAt
 	// Increment the cursor one last time past the end of the tag
 	c.AdvanceChar()
 
-	return tagName, staticAttributes, renderAttributes, isVoidElement(tagName)
+	isVoid = isVoidElement(tagName)
+
+	return tagName, staticAttributes, renderAttributes, isVoid
 }
 
 func (c *TemplateReader) ReadClosingTag() string {

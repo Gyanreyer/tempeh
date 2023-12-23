@@ -44,22 +44,17 @@ func parseTemplateFile(templateFilePath string) (parsedJSON []byte, err error) {
 
 	fileStr := string(fileBytes)
 
-	rootNode := NewRootNode("_", "1:1")
-	mainComponent := &Component{
-		RootNode:       rootNode,
-		HasDefaultSlot: false,
-		NamedSlots:     make(map[string]bool),
-		PropTypesJSDoc: "",
-	}
-	templateData := &TemplateData{
-		SourceFilePath:   templateFilePath,
-		MainComponent:    mainComponent,
-		InlineComponents: make(map[string]*Component),
-		Assets:           make(map[string]*TmphAssetBucket),
-		ComponentImports: make(map[string]*ComponentImport),
-	}
+	childNodeChannel := make(chan []*TmphNode)
 
-	parseElementChildren(rootNode, fileStr, false, mainComponent, templateData, 1, 1)
+	go parseElementChildren(childNodeChannel, fileStr, false, 1, 1)
+
+	rootChildNodes := <-childNodeChannel
+
+	rootNode := NewRootNode("_", rootChildNodes, 1, 1)
+	templateData := &TemplateData{
+		SourceFilePath: templateFilePath,
+		Root:           rootNode,
+	}
 
 	return json.Marshal(templateData)
 }

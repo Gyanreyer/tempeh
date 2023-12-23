@@ -1,113 +1,63 @@
 package main
 
 type RenderAttribute struct {
-	AttributeName                string `json:"name"`
-	AttributeModifier            string `json:"modifier,omitempty"`
-	ExpressionValue              string `json:"expressionValue,omitempty"`
-	DoesExpressionReferenceProps bool   `json:"doesExpressionReferenceProps,omitempty"`
-	IsExpressionAsync            bool   `json:"isExpressionAsync,omitempty"`
-	Position                     string `json:"position"`
+	AttributeName     string `json:"name"`
+	AttributeModifier string `json:"modifier,omitempty"`
+	ExpressionValue   string `json:"expressionValue,omitempty"`
+	Line              int    `json:"line"`
+	Column            int    `json:"column"`
 }
 
 type StaticAttribute struct {
 	AttributeName  string `json:"name"`
 	AttributeValue string `json:"value,omitempty"`
-	Position       string `json:"position"`
+	Line           int    `json:"line"`
+	Column         int    `json:"column"`
 }
 
 type TmphNode struct {
-	TagName          string            `json:"tagName,omitempty"`
-	StaticAttributes []StaticAttribute `json:"staticAttributes,omitempty"`
-	RenderAttributes []RenderAttribute `json:"renderAttributes,omitempty"`
-	Children         []*TmphNode       `json:"children,omitempty"`
-	TextContent      string            `json:"textContent,omitempty"`
-	Position         string            `json:"position"`
+	TagName          string             `json:"tagName,omitempty"`
+	StaticAttributes []*StaticAttribute `json:"staticAttributes,omitempty"`
+	RenderAttributes []*RenderAttribute `json:"renderAttributes,omitempty"`
+	Children         []*TmphNode        `json:"children,omitempty"`
+	TextContent      string             `json:"textContent,omitempty"`
+	Line             int                `json:"line"`
+	Column           int                `json:"column"`
 }
 
 func (node *TmphNode) AppendChild(child *TmphNode) {
 	node.Children = append(node.Children, child)
 }
 
-func (node *TmphNode) GetStaticAttribute(attributeName string) (isSet bool, value string) {
-	for _, attribute := range node.StaticAttributes {
-		if attribute.AttributeName == attributeName {
-			return true, attribute.AttributeValue
-		}
-	}
-
-	return false, ""
-}
-
-func (node *TmphNode) GetRenderAttribute(attributeName string) (isSet bool, modifier string, value string) {
-	for _, attribute := range node.RenderAttributes {
-		if attribute.AttributeName == attributeName {
-			return true, attribute.AttributeModifier, attribute.ExpressionValue
-		}
-	}
-
-	return false, "", ""
-}
-
-func NewElementNode(tagName string, staticAttributes []StaticAttribute, renderAttributes []RenderAttribute, position string) *TmphNode {
+func NewElementNode(tagName string, childNodes []*TmphNode, staticAttributes []*StaticAttribute, renderAttributes []*RenderAttribute, line int, column int) *TmphNode {
 	return &TmphNode{
 		TagName:          tagName,
 		StaticAttributes: staticAttributes,
 		RenderAttributes: renderAttributes,
-		Children:         []*TmphNode{},
-		Position:         position,
+		Children:         childNodes,
+		Line:             line,
+		Column:           column,
 	}
 }
 
-func NewTextNode(textContent string, position string) *TmphNode {
+func NewTextNode(textContent string, line int, column int) *TmphNode {
 	return &TmphNode{
 		TextContent: textContent,
-		Position:    position,
+		Line:        line,
+		Column:      column,
 	}
 }
 
-func NewRootNode(tagName string, position string) *TmphNode {
+func NewRootNode(tagName string, childNodes []*TmphNode, line int, column int) *TmphNode {
 	return &TmphNode{
 		TagName:  tagName,
-		Children: make([]*TmphNode, 0),
-		Position: position,
+		Children: childNodes,
+		Line:     line,
+		Column:   column,
 	}
-}
-
-type AssetBucketStyle struct {
-	Content  string `json:"content,omitempty"`
-	Path     string `json:"path,omitempty"`
-	Position string `json:"position"`
-}
-
-type AssetBucketScript struct {
-	Content  string `json:"content,omitempty"`
-	Path     string `json:"path,omitempty"`
-	Scope    string `json:"scope"`
-	Position string `json:"position"`
-}
-
-type TmphAssetBucket struct {
-	Scripts []AssetBucketScript `json:"scripts,omitempty"`
-	Styles  []AssetBucketStyle  `json:"styles,omitempty"`
-}
-
-type ComponentImport struct {
-	ImportName string `json:"importName,omitempty"`
-	Path       string `json:"path"`
-	Position   string `json:"position"`
-}
-
-type Component struct {
-	RootNode       *TmphNode       `json:"rootNode"`
-	HasDefaultSlot bool            `json:"hasDefaultSlot"`
-	NamedSlots     map[string]bool `json:"namedSlots,omitempty"`
-	PropTypesJSDoc string          `json:"propTypesJSDoc,omitempty"`
 }
 
 type TemplateData struct {
-	SourceFilePath   string                      `json:"sourceFilePath"`
-	MainComponent    *Component                  `json:"mainComponent,omitempty"`
-	InlineComponents map[string]*Component       `json:"inlineComponents,omitempty"`
-	Assets           map[string]*TmphAssetBucket `json:"assets,omitempty"`
-	ComponentImports map[string]*ComponentImport `json:"componentImports,omitempty"`
+	SourceFilePath string    `json:"sourceFilePath"`
+	Root           *TmphNode `json:"root"`
 }

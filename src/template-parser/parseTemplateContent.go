@@ -1,28 +1,17 @@
 package main
 
-import (
-	"path/filepath"
-	"strings"
-
-	"golang.org/x/text/cases"
-	"golang.org/x/text/language"
-)
-
-const DEFAULT_BUCKET_NAME = "default"
-
-func isRelativePath(path string) bool {
-	return path[0] == '.' || path[0] == '/'
-}
-
-func parseElementChildren(parentNode *TmphNode, elementContent string, shouldPreserveWhiteSpace bool, component *Component, templateData *TemplateData, line int, column int) {
+func parseElementChildren(parentChildNodeChannel chan []*TmphNode, elementContent string, shouldPreserveWhiteSpace bool, line int, column int) {
 	if elementContent == "" {
 		return
 	}
 
 	cursor := NewTemplateReader(elementContent, line, column)
 
+	parentChildNodes := make([]*TmphNode, 0, 1)
+
 	for !cursor.IsAtEnd() {
-		textContentStartPosition := cursor.GetPosition()
+		textContentStartLine := cursor.line
+		textContentStartColumn := cursor.column
 
 		textContent := cursor.ReadUntilTag()
 
@@ -34,7 +23,7 @@ func parseElementChildren(parentNode *TmphNode, elementContent string, shouldPre
 				textContent,
 				true,
 				// If this is the first child of an element, strip leading whitespace
-				len(parentNode.Children) == 0,
+				len(parentChildNodes) == 0,
 				// If we just encountered a closing tag or hit the end of the parent element's content,
 				// strip trailing whitespace
 				isAtEndOfElementContent,
@@ -42,245 +31,76 @@ func parseElementChildren(parentNode *TmphNode, elementContent string, shouldPre
 		}
 
 		if textContent != "" {
-			parentNode.AppendChild(
-				NewTextNode(textContent, textContentStartPosition),
-			)
+			parentChildNodes = append(parentChildNodes, NewTextNode(textContent, textContentStartLine, textContentStartColumn))
 		}
 
 		if isAtEndOfElementContent {
 			break
 		}
 
-		tagStartPosition := cursor.GetPosition()
+		tagStartLine := cursor.line
+		tagStartColumn := cursor.column
 		openedTagName, staticAttributes, renderAttributes, isVoid := cursor.ReadOpeningTag()
-
-		newChildNode := NewElementNode(openedTagName, staticAttributes, renderAttributes, tagStartPosition)
 
 		// Grab the line and column that the cursor is at for the start position of the tag's child contents
 		childrenStartLine := cursor.line
 		childrenStartColumn := cursor.column
-		// Get the start position as a position string as well
-		childrenStartPosition := cursor.GetPosition()
+
+		// Script and style tag contents should be treated as raw text content
+		shouldUseRawTextContent := openedTagName == "script" || openedTagName == "style"
 
 		elementChildContent := cursor.ReadRawTagTextContent(
 			openedTagName,
-			// Script and style tags don't have nested tags
-			openedTagName != "script" && openedTagName != "style",
+			!isVoid && !shouldUseRawTextContent,
 		)
 
-		switch newChildNode.TagName {
-		case "template":
-			if isComponentAttrSet, _, _ := newChildNode.GetRenderAttribute("#component"); isComponentAttrSet {
-				_, componentName := newChildNode.GetStaticAttribute("id")
-				if componentName == "" {
-					panic("Inline template component at " + newChildNode.Position + " is missing an id attribute")
-				}
-
-				if templateData.InlineComponents == nil {
-					templateData.InlineComponents = make(map[string]*Component)
-				} else if _, ok := templateData.InlineComponents[componentName]; ok {
-					panic("Duplicate inline component name: " + componentName + " at " + newChildNode.Position)
-				}
-
-				// Make a new component which we will use for the next parseElementChildren pass
-				newComponent := &Component{
-					RootNode:       newChildNode,
-					HasDefaultSlot: false,
-					NamedSlots:     make(map[string]bool),
-					PropTypesJSDoc: "",
-				}
-				templateData.InlineComponents[componentName] = newComponent
-				parseElementChildren(newChildNode, elementChildContent, false, newComponent, templateData, childrenStartLine, childrenStartColumn)
-			}
-		case "slot":
-			if _, slotName := newChildNode.GetStaticAttribute("name"); slotName != "" {
-				component.NamedSlots[slotName] = true
-			} else {
-				component.HasDefaultSlot = true
-			}
-			parentNode.AppendChild(newChildNode)
-			if elementChildContent != "" {
-				parseElementChildren(newChildNode, elementChildContent, shouldPreserveWhiteSpace, component, templateData, childrenStartLine, childrenStartColumn)
-			}
-		case "link":
-			isRelSet, rel := newChildNode.GetStaticAttribute("rel")
-			isHrefSet, href := newChildNode.GetStaticAttribute("href")
-
-			if isRelSet && isHrefSet && rel != "" && href != "" {
-				if rel == "import" {
-					_, importName := newChildNode.GetStaticAttribute("as")
-
-					if importName == "" {
-						caser := cases.Title(language.Und)
-						importedFileName := caser.String(filepath.Base(href))
-						firstDotIndex := strings.IndexRune(importedFileName, '.')
-						if firstDotIndex != -1 {
-							importName = importedFileName[:firstDotIndex]
-						} else {
-							importName = importedFileName
-						}
-					}
-
-					templateData.ComponentImports[importName] = &ComponentImport{
-						ImportName: importName,
-						Path:       href,
-						Position:   newChildNode.Position,
-					}
-					break
-				} else if rel == "stylesheet" {
-					// If this is a relative import of a stylesheet file, add it to the asset bucket
-					if isRelativePath(href) {
-						_, bucketName, _ := newChildNode.GetRenderAttribute("#bucket")
-						if bucketName == "" {
-							bucketName = DEFAULT_BUCKET_NAME
-						}
-
-						if _, ok := templateData.Assets[bucketName]; !ok {
-							templateData.Assets[bucketName] = &TmphAssetBucket{
-								Scripts: make([]AssetBucketScript, 0),
-								Styles:  make([]AssetBucketStyle, 0),
-							}
-						}
-
-						bucket := templateData.Assets[bucketName]
-
-						bucket.Styles = append(bucket.Styles, AssetBucketStyle{
-							Path:     href,
-							Position: newChildNode.Position,
-						})
-						break
-					}
-				}
-			}
-
-			parentNode.AppendChild(newChildNode)
-		case "style":
-			flattenedStyleContent := flattenWhiteSpace(
-				elementChildContent,
-				false, true, true,
+		if shouldUseRawTextContent {
+			textContentNode := NewTextNode(
+				flattenWhiteSpace(elementChildContent, false, true, true),
+				childrenStartLine, childrenStartColumn,
 			)
 
-			if isRawAttrSet, _, _ := newChildNode.GetRenderAttribute("#raw"); isRawAttrSet {
-				// If the style has a #raw attribute, just add it to the node tree without processing it
-				if flattenedStyleContent != "" {
-					newChildNode.AppendChild(
-						NewTextNode(flattenedStyleContent, childrenStartPosition),
-					)
-				}
-				parentNode.AppendChild(newChildNode)
-			} else {
-				_, bucketName, _ := newChildNode.GetRenderAttribute("#bucket")
-				if bucketName == "" {
-					// If the style doesn't have a bucket attribute, we'll use the default bucket
-					bucketName = DEFAULT_BUCKET_NAME
-				}
+			parentChildNodes = append(
+				parentChildNodes,
+				NewElementNode(
+					openedTagName, []*TmphNode{textContentNode},
+					staticAttributes, renderAttributes,
+					tagStartLine, tagStartColumn,
+				),
+			)
+		} else if isVoid || elementChildContent == "" {
+			parentChildNodes = append(
+				parentChildNodes,
+				NewElementNode(
+					openedTagName, nil,
+					staticAttributes, renderAttributes,
+					tagStartLine, tagStartColumn,
+				),
+			)
+		} else {
+			childNodeChannel := make(chan []*TmphNode)
 
-				// Create an asset bucket for the bucket name if one doesn't exist
-				if _, ok := templateData.Assets[bucketName]; !ok {
-					templateData.Assets[bucketName] = &TmphAssetBucket{
-						Scripts: make([]AssetBucketScript, 0),
-						Styles:  make([]AssetBucketStyle, 0),
-					}
-				}
-
-				bucket := templateData.Assets[bucketName]
-
-				bucket.Styles = append(bucket.Styles, AssetBucketStyle{
-					Content:  flattenedStyleContent,
-					Position: childrenStartPosition,
-				})
-			}
-		case "script":
-			// Whether the script should be appended to the node tree instead of being added to an asset bucket for processing
-			shouldAppendToNodeTree := false
-
-			if isRawAttrSet, _, _ := newChildNode.GetRenderAttribute("#raw"); isRawAttrSet {
-				// If the style has a #raw attribute, keep it in the node tree as-is without processing
-				shouldAppendToNodeTree = true
-			} else if isRenderAttrSet, _, _ := newChildNode.GetRenderAttribute("#render"); isRenderAttrSet {
-				// If the script has a #render attribute, we'll want to add it to the node tree;
-				// the tag will not be included in the rendered output, but its position in the tree matters because its contents
-				// will be placed in the compiled component's render function logic
-				shouldAppendToNodeTree = true
-			}
-
-			flattenedScriptContent := flattenWhiteSpace(
+			go parseElementChildren(
+				childNodeChannel,
 				elementChildContent,
-				false, true, true,
+				// Preserve whitespace for pre and textarea tags
+				shouldPreserveWhiteSpace || openedTagName == "pre" || openedTagName == "textarea",
+				childrenStartLine,
+				childrenStartColumn,
 			)
 
-			if shouldAppendToNodeTree {
-				if flattenedScriptContent != "" {
-					newChildNode.AppendChild(
-						NewTextNode(flattenedScriptContent, childrenStartPosition),
-					)
-				}
-				parentNode.AppendChild(newChildNode)
-			} else {
-				// We're going to add the script to an asset bucket for processing
-				isSrcAttrSet, src := newChildNode.GetStaticAttribute("src")
+			childNodes := <-childNodeChannel
 
-				if isSrcAttrSet && src != "" {
-					if !isRelativePath(src) {
-						// External scripts will be left alone, just append them to the node tree
-						parentNode.AppendChild(newChildNode)
-						break
-					}
-				}
-
-				if src != "" || flattenedScriptContent != "" {
-					_, bucketName, _ := newChildNode.GetRenderAttribute("#bucket")
-					if bucketName == "" {
-						// If the script doesn't have a bucket attribute, we'll use the default bucket
-						bucketName = DEFAULT_BUCKET_NAME
-					}
-
-					_, scope, _ := newChildNode.GetRenderAttribute("#scope")
-					if scope == "" {
-						// Default to global scope
-						scope = "global"
-					}
-
-					// Create an asset bucket for the bucket name if one doesn't exist
-					if _, ok := templateData.Assets[bucketName]; !ok {
-						templateData.Assets[bucketName] = &TmphAssetBucket{
-							Scripts: make([]AssetBucketScript, 0),
-							Styles:  make([]AssetBucketStyle, 0),
-						}
-					}
-
-					bucket := templateData.Assets[bucketName]
-
-					if src != "" {
-						bucket.Scripts = append(bucket.Scripts, AssetBucketScript{
-							Path:     src,
-							Scope:    scope,
-							Position: newChildNode.Position,
-						})
-					} else {
-						bucket.Scripts = append(bucket.Scripts, AssetBucketScript{
-							Content:  flattenedScriptContent,
-							Scope:    scope,
-							Position: childrenStartPosition,
-						})
-					}
-				}
-			}
-		default:
-			parentNode.AppendChild(newChildNode)
-
-			if !isVoid && elementChildContent != "" {
-				parseElementChildren(
-					newChildNode,
-					elementChildContent,
-					// Preserve whitespace for pre and textarea tags
-					shouldPreserveWhiteSpace || openedTagName == "pre" || openedTagName == "textarea",
-					component,
-					templateData,
-					childrenStartLine,
-					childrenStartColumn,
-				)
-			}
+			parentChildNodes = append(
+				parentChildNodes,
+				NewElementNode(
+					openedTagName, childNodes,
+					staticAttributes, renderAttributes,
+					tagStartLine, tagStartColumn,
+				),
+			)
 		}
 	}
+
+	parentChildNodeChannel <- parentChildNodes
 }
