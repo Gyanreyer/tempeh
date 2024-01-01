@@ -56,8 +56,3 @@ func NewRootNode(tagName string, childNodes []*TmphNode, line int, column int) *
 		Column:   column,
 	}
 }
-
-type TemplateData struct {
-	SourceFilePath string    `json:"sourceFilePath"`
-	Root           *TmphNode `json:"root"`
-}

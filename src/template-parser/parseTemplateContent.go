@@ -1,5 +1,11 @@
 package main
 
+import "regexp"
+
+var leadingWhiteSpaceRegex = regexp.MustCompile(`^\s+`)
+var trailingWhiteSpaceRegex = regexp.MustCompile(`\s+$`)
+var intermediateWhiteSpaceRegex = regexp.MustCompile(`\s+`)
+
 func parseElementChildren(parentChildNodeChannel chan []*TmphNode, elementContent string, shouldPreserveWhiteSpace bool, line int, column int) {
 	if elementContent == "" {
 		return
@@ -17,17 +23,25 @@ func parseElementChildren(parentChildNodeChannel chan []*TmphNode, elementConten
 
 		isAtEndOfElementContent := cursor.IsAtEnd()
 
+		// Flatten white space if we don't need to prserve it
 		if !shouldPreserveWhiteSpace {
-			// Flatten whitespace if we don't need to preserve it
-			textContent = flattenWhiteSpace(
-				textContent,
-				true,
+			if len(parentChildNodes) == 0 {
 				// If this is the first child of an element, strip leading whitespace
-				len(parentChildNodes) == 0,
-				// If we just encountered a closing tag or hit the end of the parent element's content,
-				// strip trailing whitespace
-				isAtEndOfElementContent,
-			)
+				if matchInds := leadingWhiteSpaceRegex.FindStringIndex(textContent); matchInds != nil {
+					leadingWhiteSpaceEndIndex := matchInds[1]
+					textContent = textContent[leadingWhiteSpaceEndIndex:]
+				}
+			}
+			if isAtEndOfElementContent {
+				if matchInds := trailingWhiteSpaceRegex.FindStringIndex(textContent); matchInds != nil {
+					// If this is the last child of an element, strip trailing whitespace
+					trailingWhiteSpaceStartIndex := matchInds[0]
+					textContent = textContent[:trailingWhiteSpaceStartIndex]
+				}
+			}
+
+			// Flatten all intermediate whitespace to a single space
+			textContent = intermediateWhiteSpaceRegex.ReplaceAllString(textContent, " ")
 		}
 
 		if textContent != "" {
@@ -55,8 +69,22 @@ func parseElementChildren(parentChildNodeChannel chan []*TmphNode, elementConten
 		)
 
 		if shouldUseRawTextContent {
+			var leadingWhiteSpaceEndIndex int
+			if leadingMatchInds := leadingWhiteSpaceRegex.FindStringIndex(elementChildContent); leadingMatchInds != nil {
+				leadingWhiteSpaceEndIndex = leadingMatchInds[1]
+			} else {
+				leadingWhiteSpaceEndIndex = 0
+			}
+
+			var trailingWhiteSpaceStartIndex int
+			if trailingMatchInds := trailingWhiteSpaceRegex.FindStringIndex(elementChildContent); trailingMatchInds != nil {
+				trailingWhiteSpaceStartIndex = trailingMatchInds[0]
+			} else {
+				trailingWhiteSpaceStartIndex = len(elementChildContent)
+			}
+
 			textContentNode := NewTextNode(
-				flattenWhiteSpace(elementChildContent, false, true, true),
+				elementChildContent[leadingWhiteSpaceEndIndex:trailingWhiteSpaceStartIndex],
 				childrenStartLine, childrenStartColumn,
 			)
 

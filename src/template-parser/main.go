@@ -50,11 +50,5 @@ func parseTemplateFile(templateFilePath string) (parsedJSON []byte, err error) {
 
 	rootChildNodes := <-childNodeChannel
 
-	rootNode := NewRootNode("_", rootChildNodes, 1, 1)
-	templateData := &TemplateData{
-		SourceFilePath: templateFilePath,
-		Root:           rootNode,
-	}
-
-	return json.Marshal(templateData)
+	return json.Marshal(rootChildNodes)
 }

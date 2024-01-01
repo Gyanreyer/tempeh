@@ -4,6 +4,7 @@ import * as assert from "node:assert";
 import { resolveRelativePath } from "../utils/resolveRelativePath.js";
 import { parseTemplate } from "./parseTemplate.js";
 import { stopTemplateParserServer } from "./templateParserServer.js";
+import { writeFileSync } from "node:fs";
 
 /** @typedef {import("./types.js").TmphTemplateData} TmphTemplateData */
 
@@ -18,158 +19,172 @@ describe("parseTemplate", () => {
       import.meta
     );
 
-    const parsedTemplateData = await parseTemplate(templateSourceFilePath);
+    const parsedTemplateNodes = await parseTemplate(templateSourceFilePath);
 
-    assert.deepStrictEqual(
-      parsedTemplateData,
-      /** @type {TmphTemplateData} */ ({
-        sourceFilePath: templateSourceFilePath,
-        mainComponent: {
-          hasDefaultSlot: false,
-          rootNode: {
-            tagName: "_",
-            position: "1:1",
-            children: [
+    assert.deepStrictEqual(parsedTemplateNodes, [
+      {
+        tagName: "div",
+        children: [
+          {
+            textContent: "Hello, world!",
+            line: 1,
+            column: 6,
+          },
+        ],
+        line: 1,
+        column: 1,
+      },
+      {
+        textContent: "Some root-level text ",
+        line: 2,
+        column: 1,
+      },
+      {
+        tagName: "button",
+        staticAttributes: [
+          {
+            name: "role",
+            value: "button",
+            line: 3,
+            column: 9,
+          },
+          {
+            name: "aria-disabled",
+            line: 3,
+            column: 23,
+          },
+          {
+            name: "disabled",
+            line: 3,
+            column: 37,
+          },
+          {
+            name: "aria-label",
+            value: "My custom label",
+            line: 3,
+            column: 46,
+          },
+        ],
+        children: [
+          {
+            textContent: "Click me ",
+            line: 3,
+            column: 75,
+          },
+          {
+            tagName: "svg",
+            staticAttributes: [
               {
-                tagName: "div",
-                children: [
-                  {
-                    textContent: "Hello, world!",
-                    position: "1:6",
-                  },
-                ],
-                position: "1:1",
+                name: "viewBox",
+                value: "0 0 100 100",
+                line: 5,
+                column: 8,
               },
               {
-                textContent: "Some root-level text ",
-                position: "2:1",
+                name: "xmlns",
+                value: "http://www.w3.org/2000/svg",
+                line: 5,
+                column: 30,
               },
               {
-                tagName: "button",
-                position: "3:1",
-                staticAttributes: [
-                  {
-                    name: "role",
-                    value: "button",
-                    position: "3:9",
-                  },
-                  {
-                    name: "aria-disabled",
-                    position: "3:23",
-                  },
-                  {
-                    name: "disabled",
-                    position: "3:37",
-                  },
-                  {
-                    name: "aria-label",
-                    value: "My custom label",
-                    position: "3:46",
-                  },
-                ],
-                children: [
-                  {
-                    textContent: "Click me ",
-                    position: "3:75",
-                  },
-                  {
-                    tagName: "svg",
-                    position: "5:3",
-                    staticAttributes: [
-                      {
-                        name: "viewBox",
-                        value: "0 0 100 100",
-                        position: "5:8",
-                      },
-                      {
-                        name: "xmlns",
-                        value: "http://www.w3.org/2000/svg",
-                        position: "5:30",
-                      },
-                      {
-                        name: "aria-hidden",
-                        position: "5:65",
-                      },
-                    ],
-                    children: [
-                      {
-                        tagName: "circle",
-                        position: "6:5",
-                        staticAttributes: [
-                          {
-                            name: "cx",
-                            value: "50",
-                            position: "6:13",
-                          },
-                          {
-                            name: "cy",
-                            value: "50",
-                            position: "6:21",
-                          },
-                          {
-                            name: "r",
-                            value: "50",
-                            position: "6:29",
-                          },
-                        ],
-                      },
-                    ],
-                  },
-                ],
-              },
-              {
-                tagName: "p",
-                position: "9:1",
-                children: [
-                  {
-                    textContent: "Spaces should ",
-                    position: "9:4",
-                  },
-                  {
-                    tagName: "_",
-                    position: "9:18",
-                    children: [
-                      {
-                        textContent: "be",
-                        position: "9:21",
-                      },
-                    ],
-                  },
-                  {
-                    textContent: " ",
-                    position: "9:27",
-                  },
-                  {
-                    tagName: "em",
-                    position: "9:28",
-                    children: [
-                      {
-                        textContent: "preserved",
-                        position: "9:32",
-                      },
-                    ],
-                  },
-                  {
-                    textContent: " ",
-                    position: "9:46",
-                  },
-                  {
-                    tagName: "strong",
-                    position: "9:50",
-                    children: [
-                      {
-                        textContent: "but flattened",
-                        position: "9:58",
-                      },
-                    ],
-                  },
-                ],
+                name: "aria-hidden",
+                line: 5,
+                column: 65,
               },
             ],
+            children: [
+              {
+                tagName: "circle",
+                staticAttributes: [
+                  {
+                    name: "cx",
+                    value: "50",
+                    line: 6,
+                    column: 13,
+                  },
+                  {
+                    name: "cy",
+                    value: "50",
+                    line: 6,
+                    column: 21,
+                  },
+                  {
+                    name: "r",
+                    value: "50",
+                    line: 6,
+                    column: 29,
+                  },
+                ],
+                line: 6,
+                column: 5,
+              },
+            ],
+            line: 5,
+            column: 3,
           },
-        },
-      })
-    );
+        ],
+        line: 3,
+        column: 1,
+      },
+      {
+        tagName: "p",
+        children: [
+          {
+            textContent: "Spaces should ",
+            line: 9,
+            column: 4,
+          },
+          {
+            tagName: "_",
+            children: [
+              {
+                textContent: "be",
+                line: 9,
+                column: 21,
+              },
+            ],
+            line: 9,
+            column: 18,
+          },
+          {
+            textContent: " ",
+            line: 9,
+            column: 27,
+          },
+          {
+            tagName: "em",
+            children: [
+              {
+                textContent: "preserved",
+                line: 9,
+                column: 32,
+              },
+            ],
+            line: 9,
+            column: 28,
+          },
+          {
+            textContent: " ",
+            line: 9,
+            column: 46,
+          },
+          {
+            tagName: "strong",
+            children: [
+              {
+                textContent: "but flattened",
+                line: 9,
+                column: 58,
+              },
+            ],
+            line: 9,
+            column: 50,
+          },
+        ],
+        line: 9,
+        column: 1,
+      },
+    ]);
   });
 
   test("should parse a component file with inline sub-components", async () => {
@@ -177,203 +192,205 @@ describe("parseTemplate", () => {
       "../../test/fixtures/inlineSubComponents.tmph.html",
       import.meta
     );
-    const parsedTemplateData = await parseTemplate(templateSourceFilePath);
+    const parsedTemplateNodes = await parseTemplate(templateSourceFilePath);
 
-    assert.deepStrictEqual(
-      parsedTemplateData,
-      /** @type {TmphTemplateData} */ ({
-        sourceFilePath: templateSourceFilePath,
-        mainComponent: {
-          hasDefaultSlot: false,
-          rootNode: {
-            tagName: "_",
-            position: "1:1",
-            children: [
+    assert.deepStrictEqual(parsedTemplateNodes, [
+      {
+        tagName: "ul",
+        children: [
+          {
+            tagName: "ListItem",
+            renderAttributes: [
               {
-                tagName: "ul",
-                position: "1:1",
-                children: [
-                  {
-                    tagName: "ListItem",
-                    position: "2:3",
-                    renderAttributes: [
-                      {
-                        name: "#for",
-                        modifier: "item",
-                        expressionValue: "items",
-                        position: "2:14",
-                      },
-                      {
-                        name: "#attr",
-                        modifier: "name",
-                        expressionValue: "item.name",
-                        position: "2:32",
-                      },
-                      {
-                        name: "#text",
-                        expressionValue: "item.value",
-                        position: "2:50",
-                      },
-                    ],
-                  },
-                ],
+                name: "#for",
+                modifier: "item",
+                expressionValue: "items",
+                line: 2,
+                column: 14,
+              },
+              {
+                name: "#attr",
+                modifier: "name",
+                expressionValue: "item.name",
+                line: 2,
+                column: 32,
+              },
+              {
+                name: "#text",
+                expressionValue: "item.value",
+                line: 2,
+                column: 50,
               },
             ],
+            line: 2,
+            column: 3,
           },
-        },
-        inlineComponents: {
-          ListItem: {
-            hasDefaultSlot: true,
-            rootNode: {
-              tagName: "template",
-              position: "4:1",
-              children: [
-                {
-                  tagName: "li",
-                  position: "5:3",
-                  children: [
-                    {
-                      tagName: "strong",
-                      position: "6:5",
-                      renderAttributes: [
-                        {
-                          name: "#text",
-                          expressionValue: "`${name}:`",
-                          position: "6:14",
-                        },
-                      ],
-                    },
-                    {
-                      textContent: " ",
-                      position: "7:1",
-                    },
-                    {
-                      tagName: "slot",
-                      position: "7:5",
-                    },
-                  ],
-                },
-              ],
-              renderAttributes: [
-                {
-                  name: "#component",
-                  position: "4:26",
-                },
-              ],
-              staticAttributes: [
-                {
-                  name: "id",
-                  value: "ListItem",
-                  position: "4:11",
-                },
-              ],
-            },
+        ],
+        line: 1,
+        column: 1,
+      },
+      {
+        tagName: "template",
+        staticAttributes: [
+          {
+            name: "id",
+            value: "ListItem",
+            line: 4,
+            column: 11,
           },
-          WhackyComponent: {
-            hasDefaultSlot: false,
-            rootNode: {
-              tagName: "template",
-              position: "10:1",
-              children: [
-                {
-                  tagName: "div",
-                  position: "11:3",
-                  children: [
-                    {
-                      tagName: "InnerComponent",
-                      position: "12:5",
-                    },
-                    {
-                      textContent: " ",
-                      position: "13:1",
-                    },
-                  ],
-                },
-              ],
-              renderAttributes: [
-                {
-                  name: "#component",
-                  position: "10:33",
-                },
-              ],
-              staticAttributes: [
-                {
-                  name: "id",
-                  value: "WhackyComponent",
-                  position: "10:11",
-                },
-              ],
-            },
+        ],
+        renderAttributes: [
+          {
+            name: "#component",
+            line: 4,
+            column: 26,
           },
-          NestedComponent: {
-            hasDefaultSlot: false,
-            rootNode: {
-              tagName: "template",
-              position: "13:5",
-              children: [
-                {
-                  tagName: "slot",
-                  position: "14:7",
-                  staticAttributes: [
-                    {
-                      name: "name",
-                      value: "before",
-                      position: "14:13",
-                    },
-                  ],
-                },
-                {
-                  textContent: " ",
-                  position: "15:1",
-                },
-                {
-                  tagName: "div",
-                  position: "15:7",
-                  children: [
-                    {
-                      textContent: "Why would you do this?!",
-                      position: "15:12",
-                    },
-                  ],
-                },
-                {
-                  textContent: " ",
-                  position: "16:1",
-                },
-                {
-                  tagName: "slot",
-                  position: "16:7",
-                  staticAttributes: [
-                    {
-                      name: "name",
-                      value: "after",
-                      position: "16:13",
-                    },
-                  ],
-                },
-              ],
-              renderAttributes: [
-                {
-                  name: "#component",
-                  position: "13:37",
-                },
-              ],
-              staticAttributes: [
-                {
-                  name: "id",
-                  value: "NestedComponent",
-                  position: "13:15",
-                },
-              ],
-            },
-            namedSlots: {
-              before: true,
-              after: true,
-            },
+        ],
+        children: [
+          {
+            tagName: "li",
+            children: [
+              {
+                tagName: "strong",
+                renderAttributes: [
+                  {
+                    name: "#text",
+                    expressionValue: "`${name}:`",
+                    line: 6,
+                    column: 14,
+                  },
+                ],
+                line: 6,
+                column: 5,
+              },
+              {
+                textContent: " ",
+                line: 7,
+                column: 1,
+              },
+              {
+                tagName: "slot",
+                line: 7,
+                column: 5,
+              },
+            ],
+            line: 5,
+            column: 3,
           },
-        },
-      })
-    );
+        ],
+        line: 4,
+        column: 1,
+      },
+      {
+        tagName: "template",
+        staticAttributes: [
+          {
+            name: "id",
+            value: "WhackyComponent",
+            line: 10,
+            column: 11,
+          },
+        ],
+        renderAttributes: [
+          {
+            name: "#component",
+            line: 10,
+            column: 33,
+          },
+        ],
+        children: [
+          {
+            tagName: "div",
+            children: [
+              {
+                tagName: "InnerComponent",
+                line: 12,
+                column: 5,
+              },
+              {
+                textContent: " ",
+                line: 13,
+                column: 1,
+              },
+              {
+                tagName: "template",
+                staticAttributes: [
+                  {
+                    name: "id",
+                    value: "NestedComponent",
+                    line: 13,
+                    column: 15,
+                  },
+                ],
+                renderAttributes: [
+                  {
+                    name: "#component",
+                    line: 13,
+                    column: 37,
+                  },
+                ],
+                children: [
+                  {
+                    tagName: "slot",
+                    staticAttributes: [
+                      {
+                        name: "name",
+                        value: "before",
+                        line: 14,
+                        column: 13,
+                      },
+                    ],
+                    line: 14,
+                    column: 7,
+                  },
+                  {
+                    textContent: " ",
+                    line: 15,
+                    column: 1,
+                  },
+                  {
+                    tagName: "div",
+                    children: [
+                      {
+                        textContent: "Why would you do this?!",
+                        line: 15,
+                        column: 12,
+                      },
+                    ],
+                    line: 15,
+                    column: 7,
+                  },
+                  {
+                    textContent: " ",
+                    line: 16,
+                    column: 1,
+                  },
+                  {
+                    tagName: "slot",
+                    staticAttributes: [
+                      {
+                        name: "name",
+                        value: "after",
+                        line: 16,
+                        column: 13,
+                      },
+                    ],
+                    line: 16,
+                    column: 7,
+                  },
+                ],
+                line: 13,
+                column: 5,
+              },
+            ],
+            line: 11,
+            column: 3,
+          },
+        ],
+        line: 10,
+        column: 1,
+      },
+    ]);
   });
 
   test("should parse a component file with styles", async () => {
@@ -381,100 +398,98 @@ describe("parseTemplate", () => {
       "../../test/fixtures/componentWithStyles.tmph.html",
       import.meta
     );
-    const parsedTemplateData = await parseTemplate(templateSourceFilePath);
+    const parsedTemplateNodes = await parseTemplate(templateSourceFilePath);
 
-    assert.deepStrictEqual(
-      parsedTemplateData,
-      /** @type {TmphTemplateData} */ ({
-        sourceFilePath: templateSourceFilePath,
-        mainComponent: {
-          hasDefaultSlot: false,
-          rootNode: {
-            tagName: "_",
-            position: "1:1",
+    assert.deepStrictEqual(parsedTemplateNodes, [
+      {
+        tagName: "main",
+        children: [
+          {
+            tagName: "h1",
             children: [
               {
-                tagName: "main",
-                position: "1:1",
-                children: [
-                  {
-                    tagName: "h1",
-                    position: "2:3",
-                    children: [
-                      {
-                        textContent: "Heading",
-                        position: "2:7",
-                      },
-                    ],
-                  },
-                  {
-                    textContent: " ",
-                    position: "3:1",
-                  },
-                  {
-                    tagName: "p",
-                    position: "3:3",
-                    children: [
-                      {
-                        textContent: "Paragraph",
-                        position: "3:6",
-                      },
-                    ],
-                  },
-                ],
-              },
-              {
-                tagName: "style",
-                position: "22:1",
-                renderAttributes: [
-                  {
-                    name: "#raw",
-                    position: "22:9",
-                  },
-                ],
-                children: [
-                  {
-                    textContent: `main {
-    color: red;
-  }`,
-                    position: "22:13",
-                  },
-                ],
+                textContent: "Heading",
+                line: 2,
+                column: 7,
               },
             ],
+            line: 2,
+            column: 3,
           },
-        },
-        assets: {
-          default: {
-            styles: [
+          {
+            textContent: " ",
+            line: 3,
+            column: 1,
+          },
+          {
+            tagName: "p",
+            children: [
               {
-                position: "5:8",
-                content: `@scope {
-    main {
-      font-size: 1.2em;
-    }
-
-    h1,
-    p {
-      margin: 0;
-    }
-  }`,
+                textContent: "Paragraph",
+                line: 3,
+                column: 6,
               },
             ],
+            line: 3,
+            column: 3,
           },
-          global: {
-            styles: [
-              {
-                position: "17:23",
-                content: `:root {
-    --color: #333;
-  }`,
-              },
-            ],
+        ],
+        line: 1,
+        column: 1,
+      },
+      {
+        tagName: "style",
+        children: [
+          {
+            textContent:
+              "@scope {\n    main {\n      font-size: 1.2em;\n    }\n\n    h1,\n    p {\n      margin: 0;\n    }\n  }",
+            line: 5,
+            column: 8,
           },
-        },
-      })
-    );
+        ],
+        line: 5,
+        column: 1,
+      },
+      {
+        tagName: "style",
+        renderAttributes: [
+          {
+            name: "#bucket",
+            modifier: "global",
+            line: 17,
+            column: 9,
+          },
+        ],
+        children: [
+          {
+            textContent: ":root {\n    --color: #333;\n  }",
+            line: 17,
+            column: 23,
+          },
+        ],
+        line: 17,
+        column: 1,
+      },
+      {
+        tagName: "style",
+        renderAttributes: [
+          {
+            name: "#raw",
+            line: 22,
+            column: 9,
+          },
+        ],
+        children: [
+          {
+            textContent: "main {\n    color: red;\n  }",
+            line: 22,
+            column: 13,
+          },
+        ],
+        line: 22,
+        column: 1,
+      },
+    ]);
   });
 
   test("should parse a component file with scripts", async () => {
@@ -482,82 +497,120 @@ describe("parseTemplate", () => {
       "../../test/fixtures/componentWithScripts.tmph.html",
       import.meta
     );
-    const parsedTemplateData = await parseTemplate(templateSourceFilePath);
+    const parsedTemplateNodes = await parseTemplate(templateSourceFilePath);
 
-    assert.deepStrictEqual(
-      parsedTemplateData,
-      /** @type {TmphTemplateData} */ ({
-        sourceFilePath: templateSourceFilePath,
-        mainComponent: {
-          hasDefaultSlot: false,
-          rootNode: {
-            tagName: "_",
-            position: "1:1",
-            children: [
-              {
-                tagName: "button",
-                position: "1:1",
-                children: [
-                  {
-                    textContent: "Click me!",
-                    position: "1:9",
-                  },
-                ],
-              },
-              {
-                tagName: "script",
-                position: "19:1",
-                renderAttributes: [
-                  {
-                    name: "#render",
-                    position: "19:10",
-                  },
-                  {
-                    name: "#",
-                    expressionValue: "this is a comment!",
-                    position: "19:18",
-                  },
-                ],
-                children: [
-                  {
-                    textContent:
-                      "export const num = Math.random();\n  export function render() {\n    return `<button>Click me!</button>`;\n  }",
-                    position: "19:40",
-                  },
-                ],
-              },
-            ],
+    assert.deepStrictEqual(parsedTemplateNodes, [
+      {
+        tagName: "button",
+        children: [
+          {
+            textContent: "Click me!",
+            line: 1,
+            column: 9,
           },
-        },
-        assets: {
-          default: {
-            scripts: [
-              {
-                content:
-                  "const observer = new IntersectionObserver((entries) => {\n    entries.forEach((entry) => {\n      if (entry.isIntersecting) {\n        entry.target.opacity = 1;\n      }\n    });\n  });",
-                scope: "component",
-                position: "2:26",
-              },
-              {
-                content:
-                  'this.addEventListener("click", () => console.log("You clicked me!"));\n\n  observer.observe(this);',
-                scope: "instance",
-                position: "11:25",
-              },
-              {
-                content: 'console.log("This is a global script!");',
-                scope: "global",
-                position: "16:9",
-              },
-              {
-                path: "./index.js",
-                scope: "global",
-                position: "25:1",
-              },
-            ],
+        ],
+        line: 1,
+        column: 1,
+      },
+      {
+        tagName: "script",
+        renderAttributes: [
+          {
+            name: "#scope",
+            modifier: "component",
+            line: 2,
+            column: 10,
           },
-        },
-      })
-    );
+        ],
+        children: [
+          {
+            textContent:
+              "const observer = new IntersectionObserver((entries) => {\n    entries.forEach((entry) => {\n      if (entry.isIntersecting) {\n        entry.target.opacity = 1;\n      }\n    });\n  });",
+            line: 2,
+            column: 26,
+          },
+        ],
+        line: 2,
+        column: 1,
+      },
+      {
+        tagName: "script",
+        renderAttributes: [
+          {
+            name: "#scope",
+            modifier: "instance",
+            line: 11,
+            column: 10,
+          },
+        ],
+        children: [
+          {
+            textContent:
+              'this.addEventListener("click", () => console.log("You clicked me!"));\n\n  observer.observe(this);',
+            line: 11,
+            column: 25,
+          },
+        ],
+        line: 11,
+        column: 1,
+      },
+      {
+        tagName: "script",
+        children: [
+          {
+            textContent: 'console.log("This is a global script!");',
+            line: 16,
+            column: 9,
+          },
+        ],
+        line: 16,
+        column: 1,
+      },
+      {
+        tagName: "script",
+        renderAttributes: [
+          {
+            name: "#render",
+            line: 19,
+            column: 10,
+          },
+          {
+            name: "#",
+            expressionValue: "this is a comment!",
+            line: 19,
+            column: 18,
+          },
+        ],
+        children: [
+          {
+            textContent:
+              "export const num = Math.random();\n  export function render() {\n    return `<button>Click me!</button>`;\n  }",
+            line: 19,
+            column: 40,
+          },
+        ],
+        line: 19,
+        column: 1,
+      },
+      {
+        tagName: "script",
+        staticAttributes: [
+          {
+            name: "src",
+            value: "./index.js",
+            line: 25,
+            column: 9,
+          },
+        ],
+        children: [
+          {
+            line: 25,
+            column: 26,
+          },
+        ],
+        line: 25,
+        column: 1,
+      },
+    ]);
   });
 });

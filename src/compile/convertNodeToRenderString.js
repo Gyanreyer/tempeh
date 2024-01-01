@@ -1,8 +1,5 @@
-import renderHTMLAttribute from "../render/renderAttributes.js";
 import md from "../render/md.js";
-import { getRandomString } from "../utils/getRandomString.js";
 import { deepFreeze } from "../utils/deepFreeze.js";
-import { getNodeAttributeValue } from "./getNodeAttributeValue.js";
 import { stringifyObjectForRender } from "./stringifyObjectForRender.js";
 import { makeDynamicRenderStringContent } from "./makeDynamicRenderStringContent.js";
 import { isTmphElementNode } from "./types.js";
@@ -11,7 +8,7 @@ import { isTmphElementNode } from "./types.js";
 /** @typedef {import("./types.js").TmphTextNode} TmphTextNode */
 
 // HTML tag names that don't have closing tags
-const voidTagNames = {
+const voidTagNames = Object.freeze({
   area: true,
   base: true,
   br: true,
@@ -26,7 +23,7 @@ const voidTagNames = {
   source: true,
   track: true,
   wbr: true,
-};
+});
 
 /**
  * @param {TmphTextNode|TmphElementNode} node
@@ -565,15 +562,11 @@ for(const __tmph__spreadAttrName in ${spreadableObjectVariableName}) {
     }
   }
 
-  let renderString = "";
+  let renderString = renderedElement;
 
   for (let i = scopeLevel; i >= 0; --i) {
-    renderString += scopePrefixes[i];
-    renderString += scopeSetupLogic[i];
-    if (i === 0) {
-      renderString += renderedElement;
-    }
-    renderString += scopePostfixes[i];
+    renderString =
+      scopePrefixes[i] + scopeSetupLogic[i] + renderString + scopePostfixes[i];
   }
 
   return renderString;
