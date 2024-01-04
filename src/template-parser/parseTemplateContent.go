@@ -1,19 +1,23 @@
 package main
 
-import "regexp"
+import (
+	"regexp"
+
+	gen "github.com/gyanreyer/tempeh/template-parser/pb/gen/go"
+)
 
 var leadingWhiteSpaceRegex = regexp.MustCompile(`^\s+`)
 var trailingWhiteSpaceRegex = regexp.MustCompile(`\s+$`)
 var intermediateWhiteSpaceRegex = regexp.MustCompile(`\s+`)
 
-func parseElementChildren(parentChildNodeChannel chan []*TmphNode, elementContent string, shouldPreserveWhiteSpace bool, line int, column int) {
+func parseElementChildren(parentChildNodeChannel chan []*gen.TmphNode, elementContent string, shouldPreserveWhiteSpace bool, line int, column int) {
 	if elementContent == "" {
 		return
 	}
 
 	cursor := NewTemplateReader(elementContent, line, column)
 
-	parentChildNodes := make([]*TmphNode, 0, 1)
+	parentChildNodes := make([]*gen.TmphNode, 0, 1)
 
 	for !cursor.IsAtEnd() {
 		textContentStartLine := cursor.line
@@ -45,7 +49,12 @@ func parseElementChildren(parentChildNodeChannel chan []*TmphNode, elementConten
 		}
 
 		if textContent != "" {
-			parentChildNodes = append(parentChildNodes, NewTextNode(textContent, textContentStartLine, textContentStartColumn))
+			textNode := &gen.TmphNode{
+				TextContent: &textContent,
+				Line:        uint32(textContentStartLine),
+				Column:      uint32(textContentStartColumn),
+			}
+			parentChildNodes = append(parentChildNodes, textNode)
 		}
 
 		if isAtEndOfElementContent {
@@ -54,7 +63,7 @@ func parseElementChildren(parentChildNodeChannel chan []*TmphNode, elementConten
 
 		tagStartLine := cursor.line
 		tagStartColumn := cursor.column
-		openedTagName, staticAttributes, renderAttributes, isVoid := cursor.ReadOpeningTag()
+		openedTagName, attributes, isVoid := cursor.ReadOpeningTag()
 
 		// Grab the line and column that the cursor is at for the start position of the tag's child contents
 		childrenStartLine := cursor.line
@@ -83,30 +92,35 @@ func parseElementChildren(parentChildNodeChannel chan []*TmphNode, elementConten
 				trailingWhiteSpaceStartIndex = len(elementChildContent)
 			}
 
-			textContentNode := NewTextNode(
-				elementChildContent[leadingWhiteSpaceEndIndex:trailingWhiteSpaceStartIndex],
-				childrenStartLine, childrenStartColumn,
-			)
+			textContentSlice := elementChildContent[leadingWhiteSpaceEndIndex:trailingWhiteSpaceStartIndex]
+			textContentNode := &gen.TmphNode{
+				TextContent: &textContentSlice,
+				Line:        uint32(childrenStartLine),
+				Column:      uint32(childrenStartColumn),
+			}
 
 			parentChildNodes = append(
 				parentChildNodes,
-				NewElementNode(
-					openedTagName, []*TmphNode{textContentNode},
-					staticAttributes, renderAttributes,
-					tagStartLine, tagStartColumn,
-				),
+				&gen.TmphNode{
+					TagName:    openedTagName,
+					ChildNodes: []*gen.TmphNode{textContentNode},
+					Attributes: attributes,
+					Line:       uint32(tagStartLine),
+					Column:     uint32(tagStartColumn),
+				},
 			)
 		} else if isVoid || elementChildContent == "" {
 			parentChildNodes = append(
 				parentChildNodes,
-				NewElementNode(
-					openedTagName, nil,
-					staticAttributes, renderAttributes,
-					tagStartLine, tagStartColumn,
-				),
+				&gen.TmphNode{
+					TagName:    openedTagName,
+					Attributes: attributes,
+					Line:       uint32(tagStartLine),
+					Column:     uint32(tagStartColumn),
+				},
 			)
 		} else {
-			childNodeChannel := make(chan []*TmphNode)
+			childNodeChannel := make(chan []*gen.TmphNode)
 
 			go parseElementChildren(
 				childNodeChannel,
@@ -121,11 +135,13 @@ func parseElementChildren(parentChildNodeChannel chan []*TmphNode, elementConten
 
 			parentChildNodes = append(
 				parentChildNodes,
-				NewElementNode(
-					openedTagName, childNodes,
-					staticAttributes, renderAttributes,
-					tagStartLine, tagStartColumn,
-				),
+				&gen.TmphNode{
+					TagName:    openedTagName,
+					Attributes: attributes,
+					ChildNodes: childNodes,
+					Line:       uint32(tagStartLine),
+					Column:     uint32(tagStartColumn),
+				},
 			)
 		}
 	}

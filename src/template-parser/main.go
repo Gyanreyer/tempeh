@@ -1,11 +1,13 @@
 package main
 
 import (
-	"encoding/json"
 	"net"
 	"net/http"
 	"os"
 	"strconv"
+
+	gen "github.com/gyanreyer/tempeh/template-parser/pb/gen/go"
+	"google.golang.org/protobuf/proto"
 )
 
 func main() {
@@ -16,13 +18,13 @@ func main() {
 	}
 
 	http.HandleFunc("/parse", func(w http.ResponseWriter, r *http.Request) {
-		parsedJSON, err := parseTemplateFile(r.URL.Query().Get("path"))
+		parsedTemplateDataBytes, err := parseTemplateFile(r.URL.Query().Get("path"))
 		if err != nil {
 			w.WriteHeader(http.StatusInternalServerError)
 			w.Write([]byte(err.Error()))
 		} else {
 			w.WriteHeader(http.StatusOK)
-			w.Write(parsedJSON)
+			w.Write(parsedTemplateDataBytes)
 		}
 	})
 
@@ -35,20 +37,29 @@ func main() {
 	os.Stdout.Write([]byte("http://localhost:" + strconv.Itoa(port)))
 }
 
-func parseTemplateFile(templateFilePath string) (parsedJSON []byte, err error) {
+func parseTemplateFile(templateFilePath string) (templateDataBytes []byte, err error) {
 	fileBytes, err := os.ReadFile(templateFilePath)
 
 	if err != nil {
-		panic(err)
+		return nil, err
 	}
 
 	fileStr := string(fileBytes)
 
-	childNodeChannel := make(chan []*TmphNode)
+	childNodeChannel := make(chan []*gen.TmphNode)
 
 	go parseElementChildren(childNodeChannel, fileStr, false, 1, 1)
 
-	rootChildNodes := <-childNodeChannel
+	parsedTemplateNodes := <-childNodeChannel
 
-	return json.Marshal(rootChildNodes)
+	templateDataBytes, err = proto.Marshal(&gen.TemplateData{
+		Src:   templateFilePath,
+		Nodes: parsedTemplateNodes,
+	})
+
+	if err != nil {
+		return nil, err
+	}
+
+	return templateDataBytes, nil
 }
