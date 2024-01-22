@@ -3,61 +3,246 @@ import * as assert from "node:assert";
 
 import { html } from "./html.js";
 
+/**
+ * @param {number} ms
+ */
+const waitFor = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
+
 describe("html", () => {
-  test("should remove whitespace from HTML as expected", () => {
-    const htmlString = html(`
-      <!DOCTYPE html>
-      <html lang="en-US">
-        <head>
-          <meta charset="UTF-8" />
-          <meta
-            name="viewport"
-            content="width=device-width, initial-scale=1.0"
-          />
-          <title>Hello</title>
-        </head>
-        <body>
-          <h1>Hello, world!</h1>
+  test("html can be used as an async generator", async () => {
+    const htmlGenerator = html`<p>
+        ${(async () => {
+          await waitFor(10);
+          return "Async content?!";
+        })()}
+      </p>
+      <p>
+        ${(async () => {
+          await waitFor(20);
+          return "More async content";
+        })()}
+      </p>`;
 
-          <p>This is a paragraph.</p>
-          <p>${2} times ${8} is ${2 * 8}</p>
-        </body>
-      </html>
-    `);
+    const chunks = [];
 
-    const expectedOutput =
-      '<!doctype html><html lang=en-US><head><meta charset=UTF-8><meta content="width=device-width,initial-scale=1.0" name=viewport><title>Hello</title></head><body><h1>Hello, world!</h1><p>This is a paragraph.</p><p>2 times 8 is 16</p></body></html>';
+    for await (const chunk of htmlGenerator) {
+      chunks.push(chunk);
+    }
 
-    assert.strictEqual(htmlString, expectedOutput);
+    assert.deepStrictEqual(chunks, [
+      `<p>
+        `,
+      `Async content?!`,
+      `
+      </p>
+      <p>
+        `,
+      `More async content`,
+      `
+      </p>`,
+    ]);
   });
 
-  test("should respect whitespace in <pre> tags", () => {
-    const htmlString = html(`
-      <!DOCTYPE html>
-      <html lang="en-US">
-        <head>
-          <meta charset="UTF-8" />
-          <meta
-            name="viewport"
-            content="width=device-width, initial-scale=1.0"
-          />
-          <title>Hello</title>
-        </head>
-        <body>
-          <h1>Hello, world!</h1>
+  test("html.textStream() creates a readable string stream", async () => {
+    const htmlGenerator = html`<p>
+        ${(async () => {
+          await waitFor(10);
+          return "Async content again?!";
+        })()}
+      </p>
+      <p>
+        ${(async () => {
+          await waitFor(20);
+          return "Even more async content.";
+        })()}
+      </p>`;
 
-          <pre>
-            This is a preformatted text block.
-            It should respect whitespace and line breaks.
-          </pre
-          >
-        </body>
-      </html>
-    `);
+    const reader = htmlGenerator.textStream().getReader();
+    /** @type {string[]} */
+    let chunks = [];
 
-    const expectedOutput =
-      '<!doctype html><html lang=en-US><head><meta charset=UTF-8><meta content="width=device-width,initial-scale=1.0" name=viewport><title>Hello</title></head><body><h1>Hello, world!</h1><pre>\n            This is a preformatted text block.\n            It should respect whitespace and line breaks.\n          </pre></body></html>';
+    try {
+      for (
+        let readResult = await reader.read();
+        !readResult.done;
+        readResult = await reader.read()
+      ) {
+        chunks.push(readResult.value);
+      }
+    } finally {
+      reader.releaseLock();
+    }
 
-    assert.strictEqual(htmlString, expectedOutput);
+    assert.deepStrictEqual(chunks, [
+      `<p>
+        `,
+      `Async content again?!`,
+      `
+      </p>
+      <p>
+        `,
+      `Even more async content.`,
+      `
+      </p>`,
+    ]);
+  });
+
+  test("html.arrayBufferStream() creates a readable Uint8Array stream", async () => {
+    const htmlGenerator = html`<p>
+        ${(async () => {
+          await waitFor(10);
+          return "Async content again?!";
+        })()}
+      </p>
+      <p>
+        ${(async () => {
+          await waitFor(20);
+          return "Even more async content.";
+        })()}
+      </p>`;
+
+    const reader = htmlGenerator.arrayBufferStream().getReader();
+    /** @type {string[]} */
+    let chunks = [];
+
+    const textDecoder = new TextDecoder();
+
+    try {
+      for (
+        let readResult = await reader.read();
+        !readResult.done;
+        readResult = await reader.read()
+      ) {
+        chunks.push(textDecoder.decode(readResult.value));
+      }
+    } finally {
+      reader.releaseLock();
+    }
+
+    assert.deepStrictEqual(chunks, [
+      `<p>
+        `,
+      `Async content again?!`,
+      `
+      </p>
+      <p>
+        `,
+      `Even more async content.`,
+      `
+      </p>`,
+    ]);
+  });
+
+  test("html.response() creates a Response from the html stream", async () => {
+    const htmlGenerator = html`<p>
+        ${(async () => {
+          await waitFor(10);
+          return "Async content again?!";
+        })()}
+      </p>
+      <p>
+        ${(async () => {
+          await waitFor(20);
+          return "Even more async content.";
+        })()}
+      </p>`;
+
+    const response = await htmlGenerator.response();
+
+    assert.strictEqual(response.headers.get("content-type"), "text/html");
+    assert.strictEqual(
+      await response.text(),
+      `<p>
+        Async content again?!
+      </p>
+      <p>
+        Even more async content.
+      </p>`
+    );
+  });
+
+  test("html.text() returns the full final html string", async () => {
+    const htmlGenerator = html`<p>
+        ${(async () => {
+          await waitFor(10);
+          return "Async content...";
+        })()}
+      </p>
+      <p>
+        ${(async () => {
+          await waitFor(20);
+          return "Some more";
+        })()}
+      </p>`;
+
+    assert.strictEqual(
+      await htmlGenerator.text(),
+      `<p>
+        Async content...
+      </p>
+      <p>
+        Some more
+      </p>`
+    );
+  });
+
+  test("nested html generators work as expected", async () => {
+    const htmlGenerator = html`<p>
+        ${(async () => {
+          await waitFor(10);
+          return "Async content...";
+        })()}
+      </p>
+      <ul>
+        ${(async () => html`
+          <li>
+            ${(async () => {
+              await waitFor(20);
+              return "Some more";
+            })()}
+          </li>
+          <li>
+            ${(async () => {
+              return "And more";
+            })()}
+          </li>
+        `)()}
+      </ul>`;
+
+    const chunks = [];
+
+    const reader = htmlGenerator.textStream().getReader();
+
+    for (
+      let readResult = await reader.read();
+      !readResult.done;
+      readResult = await reader.read()
+    ) {
+      chunks.push(readResult.value);
+    }
+
+    assert.deepStrictEqual(chunks, [
+      `<p>
+        `,
+      `Async content...`,
+      `
+      </p>
+      <ul>
+        `,
+      `
+          <li>
+            `,
+      `Some more`,
+      `
+          </li>
+          <li>
+            `,
+      `And more`,
+      `
+          </li>
+        `,
+      `
+      </ul>`,
+    ]);
   });
 });
