@@ -245,4 +245,49 @@ describe("html", () => {
       </ul>`,
     ]);
   });
+
+  test("nested generators work as expected", async () => {
+    const htmlGenerator = html`<ul>
+        ${async function* () {
+          // Async generators work
+          for (let i = 0; i < 3; i++) {
+            yield html`<li>Item ${i}</li>`;
+          }
+        }}
+      </ul>
+      <ul>
+        ${
+          // Array contents will be unwrapped because they have sync generators
+          [html`<li>Item 0</li>`, html`<li>Item 1</li>`, html`<li>Item 2</li>`]
+        }
+      </ul>`;
+
+    const chunks = [];
+    for await (const chunk of htmlGenerator) {
+      chunks.push(chunk);
+    }
+
+    assert.deepStrictEqual(chunks, [
+      `<ul>
+        `,
+      `<li>Item `,
+      `0`,
+      `</li>`,
+      `<li>Item `,
+      `1`,
+      `</li>`,
+      `<li>Item `,
+      `2`,
+      `</li>`,
+      `
+      </ul>
+      <ul>
+        `,
+      `<li>Item 0</li>`,
+      `<li>Item 1</li>`,
+      `<li>Item 2</li>`,
+      `
+      </ul>`,
+    ]);
+  });
 });
