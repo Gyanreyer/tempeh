@@ -20,12 +20,14 @@ export default function renderHTMLAttribute(attributeName, attributeValue) {
     return "";
   }
 
+  const valueType = typeof attributeValue;
+
   if (
-    typeof attributeValue === "string" ||
-    typeof attributeValue === "number"
+    (valueType === "string" && attributeValue !== "") ||
+    valueType === "number"
   ) {
     return ` ${attributeName}="${escapeAttribute(String(attributeValue))}"`;
-  } else if (Boolean(attributeValue)) {
+  } else if (Boolean(attributeValue) || attributeValue === "") {
     return ` ${attributeName}`;
   }
 

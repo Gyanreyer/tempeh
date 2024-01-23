@@ -9,11 +9,6 @@
     "lightningcss": "^1.22.0",
     "marked": "^9.1.2"
   },
-  "imports": {
-    "#tmph/render/*": {
-      "node": "./src/render/*"
-    }
-  },
   "scripts": {
     "protoc": "npx buf generate --template=./src/template-parser/pb/buf.gen.yaml --output=./src/template-parser/pb ./src/template-parser/pb",
     "build-template-parser": "go build -C ./src/template-parser -o ../../bin/parse-template",

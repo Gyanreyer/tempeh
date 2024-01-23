@@ -20,7 +20,7 @@ My initial rough vision would be for templates to be defined in `.tmph.html` fil
 ```html
 <!-- components/List.tmph.html -->
 <ul>
-  <li #for:item="props.items" #text="item"></li>
+  <li #for-of:item="props.items" #text="item"></li>
 </ul>
 ```
 
@@ -251,19 +251,20 @@ with a custom string. Note that capitalization in the provided string will be ig
 
 ### Attributes tagged with a `#` are reserved for special Tempeh template functions related to rendering logic
 
-#### `#for:{item}`
+#### `#for-of:{item}`
 
-You can use the `#for` attribute to render an element and its children for each item in an iterable list.
+You can use the `#for-of` attribute to render an element and its children for each item in an iterable, or for each property in an object.
 
 The attribute name should include a colon-separated attribute modifier which defines the
 variable name that you can reference each item in the list with. You can also optionally add a comma and additional variable name which will map to the item's index.
 
-The attribute value should be a JavaScript expression which evaluates to an interable value such as an Array.
+The attribute value should be a JavaScript expression which evaluates to an interable value such as an Array. Async iterables are also supported. If you wish to iterate over the keys of an
+object, you can use `#for-of:key="Object.keys(obj)"`.
 
 ```html
 <!-- list.tmph.html -->
 <ul>
-  <li #for:listItem,i="props.items" :data-index="i">
+  <li #for-of:listItem,i="props.items" :data-index="i">
     <h3 $textContent="listItem.title" />
     <p $textContent="listItem.body" />
   </li>
@@ -293,24 +294,17 @@ The attribute value should be a JavaScript expression which evaluates to an inte
 </ul>
 ```
 
-##### `#for-range:{index}`
+#### `#for-count`
 
-For cases where you just need to arbitrarily loop a certain number of times, you can use the `#for-range` attribute.
-The attribute should take a JavaScript expression which evaluates to an array of 2 integers representing the start and end index of the range (both inclusive).
+For cases where you just need to arbitrarily loop a certain number of times, you can use the `#for-count` attribute.
+The attribute should take a JavaScript expression which evaluates to a number representing the number of times to loop.
 
-If the start index is higher than the end, the loop will count down instead of up.
-
-For even more advanced cases where you may wish to skip certain parts of a range, you may instead provide an array of range arrays.
+You may add an additional optional colon-separated attribute modifier for the current loop index. This index will be zero-based,
+so `#for-count="5"` will go from 0 to 4.
 
 ```html
 <ol>
-  <li #for-range:i="[0, 2]" #text="i" />
-</ol>
-<ol>
-  <li
-    #="Count up to 3 and then back down to 1"
-    #for-range:i="[[1,3], [2,1]]" #text="i"
-  />
+  <li #for-count:i="3" #text="i" />
 </ol>
 
 <!-- Rendered result -->
@@ -319,12 +313,25 @@ For even more advanced cases where you may wish to skip certain parts of a range
   <li>1</li>
   <li>2</li>
 </ol>
+```
+
+#### `#for`
+
+If you would like to use your own more advanced looping logic, the `#for` attribute accepts 3 semi-colon JavaScript expressions
+in the format of standard JavaScript `for` loop expressions, ie `#for="let i = 0; i < 10; i += 2"`.
+
+This allows greater flexibility in your loop's conditions and/or how the loop is incremented compared to `#for-of` and `for-count`.
+
+```html
 <ol>
-  <li>1</li>
-  <li>2</li>
-  <li>3</li>
-  <li>2</li>
-  <li>1</li>
+  <li #for="let i = 0; i <= 50; i += 25" #text="i" />
+</ol>
+
+<!-- Rendered result -->
+<ol>
+  <li>0</li>
+  <li>25</li>
+  <li>50</li>
 </ol>
 ```
 
@@ -352,16 +359,16 @@ This attribute will be stripped from the rendered output.
 </div>
 ```
 
-#### `#with:{var}`
+#### `#let:{var}`
 
-You can set a `#with` attribute on an element with an attribute modifier for a variable name
+You can set a `#let` attribute on an element with an attribute modifier for a variable name
 to declare a scoped variable whose value will be available on that element and all of its children.
 
 This can be useful for pre-computing values which are re-used multiple times in the template.
 
 ```html
 <!-- example.tmph.html -->
-<div #with:id="props.getItem().id" :id="id">
+<div #let:id="props.getItem().id" :id="id">
   <p $textContent="`My ID is ${id}`" />
 </div>
 

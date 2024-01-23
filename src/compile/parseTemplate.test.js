@@ -4,7 +4,6 @@ import * as assert from "node:assert";
 import { resolveRelativePath } from "../utils/resolveRelativePath.js";
 import { parseTemplate } from "./parseTemplate.js";
 import { stopTemplateParserServer } from "./templateParserServer.js";
-import { TemplateData } from "../template-parser/pb/gen/js/template-data_pb.js";
 
 describe("parseTemplate", () => {
   after(() => {

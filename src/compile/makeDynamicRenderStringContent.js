@@ -1,17 +1,14 @@
-import { dynamicContentIIFE } from "./dynamicStringContent";
-
 // Regex matches the last line of a JavaScript expression
 const lastLineOfExpressionRegex = /([^;]+)[\s;]?$/;
 // Regex matches a return statement so we can extract the returned value from the last line of an expression if necessary
 const returnedValueRegex = /\breturn\s+(?<returnedValue>[^;]+)/;
 
-const asyncTokenRegex = /\basync\b/;
+const containsAwaitTokenRegex = /\bawait\b/;
 
 /**
- * @param {string} variableName
  * @param {string} dynamicContent
  */
-export function makeDynamicRenderStringContent(variableName, dynamicContent) {
+export function parseDynamicAttributeContent(dynamicContent) {
   const lastLineOfExpressionMatch = dynamicContent.match(
     lastLineOfExpressionRegex
   );
@@ -20,7 +17,7 @@ export function makeDynamicRenderStringContent(variableName, dynamicContent) {
     throw new Error(`Failed to parse expression: "${dynamicContent}"`);
   }
 
-  const isAsync = asyncTokenRegex.test(dynamicContent);
+  const isAsync = containsAwaitTokenRegex.test(dynamicContent);
 
   let lastExpressionLine = lastLineOfExpressionMatch[0];
   const setupExpressionLines = dynamicContent
@@ -36,11 +33,9 @@ export function makeDynamicRenderStringContent(variableName, dynamicContent) {
 
   lastExpressionLine = lastExpressionLine.trim();
 
-  return `
-  let ${variableName} = ${dynamicContentIIFE(
-    `${setupExpressionLines}
-  return (${lastExpressionLine});
-`,
-    isAsync
-  )}`;
+  return {
+    setupExpressionLines,
+    lastExpressionLine,
+    isAsync,
+  };
 }

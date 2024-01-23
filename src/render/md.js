@@ -1,16 +1,11 @@
 import { parse } from "marked";
-import html from "./html.js";
+import { TmphHTML } from "./html.js";
 
 /**
  * Takes a markdown string and converts it into a minified HTML string.
  *
- * @param {string} markdownString
- * @returns {string}
+ * @param {TmphHTML} markdownHTML
  */
-export default function md(markdownString) {
-  return html(
-    parse(markdownString, {
-      async: false,
-    })
-  );
+export default async function md(markdownHTML) {
+  return parse(await markdownHTML.text(), { async: true });
 }
