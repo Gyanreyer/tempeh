@@ -119,9 +119,16 @@ flattened</strong></p>`,
     );
 
     assert.deepStrictEqual(componentRenderStrings, [
-      `<article>\${md\`# Title
-## Subheading
-This is a paragraph.\`}</article>`,
+      `<article>\${md\`
+  # Title
+
+  ## Subheading
+
+  This is a paragraph.
+
+  - list item 1
+    - sub-bullet
+  \`}</article>`,
     ]);
   });
 });

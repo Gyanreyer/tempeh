@@ -1,4 +1,4 @@
-import { parseDynamicAttributeContent } from "./makeDynamicRenderStringContent.js";
+import { parseDynamicAttributeContent } from "./parseDynamicAttributeContent.js";
 import renderHTMLAttribute from "../render/renderAttributes.js";
 import { TmphNode } from "../template-parser/pb/gen/js/template-data_pb.js";
 
@@ -40,6 +40,7 @@ export function convertNodeToRenderString(node, imports, templateData) {
   let childNodes = node.childNodes;
   let childString = "";
 
+  let isFragment = false;
   let shouldParseChildrenAsMarkdown = false;
 
   /**
@@ -48,8 +49,6 @@ export function convertNodeToRenderString(node, imports, templateData) {
    * @type {Array<(childScope: string) => string>}
    */
   const renderLogicScopes = [];
-
-  let hasDynamicContent = false;
 
   let attributeIndex = -1;
   for (const attribute of node.attributes) {
@@ -75,6 +74,10 @@ export function convertNodeToRenderString(node, imports, templateData) {
     switch (attrName) {
       case "#": {
         // Skip comment attributes
+        break;
+      }
+      case "#fragment": {
+        isFragment = true;
         break;
       }
       case "#md": {
@@ -302,14 +305,10 @@ export function convertNodeToRenderString(node, imports, templateData) {
         break;
       }
     }
-
-    if (isDynamicAttribute) {
-      hasDynamicContent = true;
-    }
   }
 
   const isSlot = tagName === "slot";
-  const isFragment = isSlot || tagName === "_";
+  isFragment = isFragment || isSlot || tagName === "_";
 
   let renderString = "";
 
