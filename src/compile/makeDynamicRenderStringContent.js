@@ -20,9 +20,15 @@ export function parseDynamicAttributeContent(dynamicContent) {
   const isAsync = containsAwaitTokenRegex.test(dynamicContent);
 
   let lastExpressionLine = lastLineOfExpressionMatch[0];
-  const setupExpressionLines = dynamicContent
+  let setupExpressionLines = dynamicContent
     .slice(0, lastLineOfExpressionMatch.index)
     .trim();
+
+  if (setupExpressionLines) {
+    setupExpressionLines = `
+${setupExpressionLines}
+`;
+  }
 
   const returnedValueMatch = lastExpressionLine.match(returnedValueRegex);
   if (returnedValueMatch?.groups?.returnedValue) {

@@ -30,24 +30,13 @@ describe("convertNodeToRenderString", () => {
     );
 
     assert.deepStrictEqual(componentRenderStrings, [
-      {
-        renderString: "<div>Hello, world!</div>",
-        type: "static-html",
-      },
-      {
-        renderString: "Some root-level text ",
-        type: "text",
-      },
-      {
-        renderString:
-          '<button role="button" aria-disabled disabled aria-label="My custom label">Click me <svg viewBox="0 0 100 100" xmlns="http://www.w3.org/2000/svg" aria-hidden><circle cx="50" cy="50" r="50"></circle></svg></button>',
-        type: "static-html",
-      },
-      {
-        renderString:
-          "<p>Spaces should be <em>preserved</em> <strong>but flattened</strong></p>",
-        type: "static-html",
-      },
+      "<div>Hello, world!</div>",
+      `Some root-level text
+`,
+      `<button role="button" aria-disabled disabled aria-label="My custom label">Click me
+<svg viewBox="0 0 100 100" xmlns="http://www.w3.org/2000/svg" aria-hidden><circle cx="50" cy="50" r="50"></circle></svg></button>`,
+      `<p>Spaces should be <em>preserved</em> <strong>but
+flattened</strong></p>`,
     ]);
   });
 
@@ -70,11 +59,7 @@ describe("convertNodeToRenderString", () => {
     );
 
     assert.deepStrictEqual(componentRenderStrings, [
-      {
-        renderString:
-          "<div>${slot ?? html`Default slot content`} ${namedSlots?.after ?? html`Named slot content`}</div>",
-        type: "static-html",
-      },
+      "<div>${slot ?? html`Default slot content`} ${namedSlots?.after ?? html`Named slot content`}</div>",
     ]);
   });
 
@@ -97,28 +82,46 @@ describe("convertNodeToRenderString", () => {
     );
 
     assert.deepStrictEqual(componentRenderStrings, [
-      {
-        renderString: `<ul>\${(function* () {
-  
+      `<ul>\${(function* () {
   const __TMPH__for0__count = (6);
   for (let i = 0; i < __TMPH__for0__count; ++i) {
     yield (() => {
-  
   if(!(i % 2 === 0)) {
       return null;
   }
   return html\`<li\${(() => {
-  
   return renderHTMLAttribute("style", (\`--i: \${i}\`));
 })()}>\${(() => {
-              
-              return escapeText(\`Item \${i}\`);
-            })()}</li>\`;
+  return escapeText(\`Item \${i}\`);
+})()}</li>\`;
 })();
   }
 })()}</ul>`,
-        type: "static-html",
-      },
+    ]);
+  });
+
+  test("handles a template with markdown content", async () => {
+    const templateSourceFilePath = resolveRelativePath(
+      "../../test/fixtures/markdownComponent.tmph.html",
+      import.meta
+    );
+
+    const parsedTemplateData = await parseTemplate(templateSourceFilePath);
+
+    const componentRenderStrings = parsedTemplateData.nodes.map((node) =>
+      convertNodeToRenderString(
+        node,
+        {},
+        {
+          sourceFilePath: parsedTemplateData.src,
+        }
+      )
+    );
+
+    assert.deepStrictEqual(componentRenderStrings, [
+      `<article>\${md\`# Title
+## Subheading
+This is a paragraph.\`}</article>`,
     ]);
   });
 });

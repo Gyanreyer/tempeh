@@ -2,6 +2,7 @@ import { test, describe } from "node:test";
 import * as assert from "node:assert";
 
 import { html } from "./html.js";
+import { md } from "./md.js";
 
 /**
  * @param {number} ms
@@ -246,21 +247,15 @@ describe("html", () => {
     ]);
   });
 
-  test("nested generators work as expected", async () => {
+  test("generator functions in html are unwrapped as expected", async () => {
     const htmlGenerator = html`<ul>
-        ${async function* () {
-          // Async generators work
-          for (let i = 0; i < 3; i++) {
-            yield html`<li>Item ${i}</li>`;
-          }
-        }}
-      </ul>
-      <ul>
-        ${
-          // Array contents will be unwrapped because they have sync generators
-          [html`<li>Item 0</li>`, html`<li>Item 1</li>`, html`<li>Item 2</li>`]
+      ${function* () {
+        // Async generators work
+        for (let i = 0; i < 3; i++) {
+          yield html`<li>Item ${i}</li>`;
         }
-      </ul>`;
+      }}
+    </ul>`;
 
     const chunks = [];
     for await (const chunk of htmlGenerator) {
@@ -269,7 +264,7 @@ describe("html", () => {
 
     assert.deepStrictEqual(chunks, [
       `<ul>
-        `,
+      `,
       `<li>Item `,
       `0`,
       `</li>`,
@@ -280,14 +275,36 @@ describe("html", () => {
       `2`,
       `</li>`,
       `
-      </ul>
-      <ul>
-        `,
-      `<li>Item 0</li>`,
-      `<li>Item 1</li>`,
-      `<li>Item 2</li>`,
+    </ul>`,
+    ]);
+  });
+
+  test("nested markdown is parsed as expected", async () => {
+    const htmlGenerator = html`<body>
+      ${md`
+# Hello world!
+
+## This is a markdown document
+
+And I can do whatever I want
+      `}
+    </body>`;
+
+    const chunks = [];
+    for await (const chunk of htmlGenerator) {
+      chunks.push(chunk);
+    }
+
+    assert.deepStrictEqual(chunks, [
+      `<body>
+      `,
+      `<h1>Hello world!</h1>
+<h2>This is a markdown document</h2>
+<p>And I can do whatever I want
+      </p>
+`,
       `
-      </ul>`,
+    </body>`,
     ]);
   });
 });

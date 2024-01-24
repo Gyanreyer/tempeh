@@ -10,6 +10,18 @@ var leadingWhiteSpaceRegex = regexp.MustCompile(`^\s+`)
 var trailingWhiteSpaceRegex = regexp.MustCompile(`\s+$`)
 var intermediateWhiteSpaceRegex = regexp.MustCompile(`\s+`)
 
+var lineBreakRegex = regexp.MustCompile(`[\n\r]+`)
+
+func replaceIntermediateWhiteSpaceMatchfunc(match string) string {
+	// Flatten all white space containing a line break with a single new line character
+	if lineBreakRegex.MatchString(match) {
+		return "\n"
+	}
+
+	// Flatten all other white space to a single space
+	return " "
+}
+
 func parseElementChildren(parentChildNodeChannel chan []*gen.TmphNode, elementContent string, shouldPreserveWhiteSpace bool, line int, column int) {
 	if elementContent == "" {
 		return
@@ -44,8 +56,8 @@ func parseElementChildren(parentChildNodeChannel chan []*gen.TmphNode, elementCo
 				}
 			}
 
-			// Flatten all intermediate whitespace to a single space
-			textContent = intermediateWhiteSpaceRegex.ReplaceAllString(textContent, " ")
+			// Flatten all intermediate whitespace to a single space or line break
+			textContent = intermediateWhiteSpaceRegex.ReplaceAllStringFunc(textContent, replaceIntermediateWhiteSpaceMatchfunc)
 		}
 
 		if textContent != "" {

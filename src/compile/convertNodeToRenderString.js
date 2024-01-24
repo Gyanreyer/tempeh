@@ -26,11 +26,11 @@ const voidTagNames = Object.freeze({
  * @param {{
  *  sourceFilePath: string;
  * }} templateData
- * @returns {{ renderString: string; type: "static-html" | "dynamic-html" | "text" }}
+ * @returns {string}
  */
 export function convertNodeToRenderString(node, imports, templateData) {
   if (node.textContent) {
-    return { renderString: node.textContent, type: "text" };
+    return node.textContent;
   }
 
   let attributeString = "";
@@ -47,7 +47,7 @@ export function convertNodeToRenderString(node, imports, templateData) {
    * This is necessary for #if and #for attributes which impact what/how content is rendered.
    * @type {Array<(childScope: string) => string>}
    */
-  const renderConditionScopeGenerators = [];
+  const renderLogicScopes = [];
 
   let hasDynamicContent = false;
 
@@ -92,10 +92,11 @@ export function convertNodeToRenderString(node, imports, templateData) {
         const { setupExpressionLines, lastExpressionLine, isAsync } =
           parseDynamicAttributeContent(attrValue);
 
-        tagName = `\${(${isAsync ? "async " : ""}() => {
-          ${setupExpressionLines}
-          return (${lastExpressionLine});
-        })()}`;
+        tagName = /* JS */ `\${(${
+          isAsync ? "async " : ""
+        }() => {${setupExpressionLines}
+  return (${lastExpressionLine});
+})()}`;
         break;
       }
       case "#text": {
@@ -104,10 +105,11 @@ export function convertNodeToRenderString(node, imports, templateData) {
           parseDynamicAttributeContent(attrValue);
 
         childNodes = null;
-        childString = `\${(${isAsync ? "async " : ""}() => {
-              ${setupExpressionLines}
-              return escapeText(${lastExpressionLine});
-            })()}`;
+        childString = /* JS */ `\${(${
+          isAsync ? "async " : ""
+        }() => {${setupExpressionLines}
+  return escapeText(${lastExpressionLine});
+})()}`;
         break;
       }
       case "#html": {
@@ -115,10 +117,11 @@ export function convertNodeToRenderString(node, imports, templateData) {
           parseDynamicAttributeContent(attrValue);
 
         childNodes = null;
-        childString = `\${(${isAsync ? "async " : ""}() => {
-              ${setupExpressionLines}
-              return (${lastExpressionLine});
-            })()}`;
+        childString = /* JS */ `\${(${
+          isAsync ? "async " : ""
+        }() => {${setupExpressionLines}
+  return (${lastExpressionLine});
+})()}`;
         break;
       }
       case "#if": {
@@ -129,12 +132,11 @@ export function convertNodeToRenderString(node, imports, templateData) {
           break;
         }
 
-        renderConditionScopeGenerators.push((nestedContent) => {
+        renderLogicScopes.push((nestedContent) => {
           const { setupExpressionLines, lastExpressionLine } =
             parseDynamicAttributeContent(attrValue);
 
-          return /* JS */ `(() => {
-  ${setupExpressionLines}
+          return /* JS */ `(() => {${setupExpressionLines}
   if(!(${lastExpressionLine})) {
       return null;
   }
@@ -160,12 +162,11 @@ export function convertNodeToRenderString(node, imports, templateData) {
 
         const iterableVariableName = `__TMPH__for${attributeIndex}__iterable`;
 
-        renderConditionScopeGenerators.push((nestedContent) => {
+        renderLogicScopes.push((nestedContent) => {
           const { setupExpressionLines, lastExpressionLine } =
             parseDynamicAttributeContent(attrValue);
 
-          return /* JS */ `(async function* () {
-  ${setupExpressionLines}
+          return /* JS */ `(async function* () {${setupExpressionLines}
   const ${iterableVariableName} = (${lastExpressionLine});
   ${indexVariableName ? /* JS */ `let ${indexVariableName} = 0;` : ""}
 
@@ -192,12 +193,13 @@ export function convertNodeToRenderString(node, imports, templateData) {
 
         const iterationCountVarName = `__TMPH__for${attributeIndex}__count`;
 
-        renderConditionScopeGenerators.push((nestedContent) => {
+        renderLogicScopes.push((nestedContent) => {
           const { setupExpressionLines, lastExpressionLine, isAsync } =
             parseDynamicAttributeContent(attrValue);
 
-          return /* JS */ `(${isAsync ? "async " : ""}function* () {
-  ${setupExpressionLines}
+          return /* JS */ `(${
+            isAsync ? "async " : ""
+          }function* () {${setupExpressionLines}
   const ${iterationCountVarName} = (${lastExpressionLine});
   for (let ${iterationIndexVarName} = 0; ${iterationIndexVarName} < ${iterationCountVarName}; ++${iterationIndexVarName}) {
     yield ${nestedContent};
@@ -207,10 +209,7 @@ export function convertNodeToRenderString(node, imports, templateData) {
         break;
       }
       case "#for": {
-        renderConditionScopeGenerators.push((nestedContent) => {
-          const { setupExpressionLines, lastExpressionLine, isAsync } =
-            parseDynamicAttributeContent(attrValue);
-
+        renderLogicScopes.push((nestedContent) => {
           return /* JS */ `(function* () {
   for (${attrValue}) {
     yield ${nestedContent};
@@ -227,13 +226,14 @@ export function convertNodeToRenderString(node, imports, templateData) {
           break;
         }
 
-        renderConditionScopeGenerators.push((nestedContent) => {
+        renderLogicScopes.push((nestedContent) => {
           if (attrValue) {
             const { setupExpressionLines, lastExpressionLine, isAsync } =
               parseDynamicAttributeContent(attrValue);
 
-            return /* JS */ `(${isAsync ? "async " : ""}() => {
-  ${setupExpressionLines}
+            return /* JS */ `(${
+              isAsync ? "async " : ""
+            }() => {${setupExpressionLines}
   let ${variableName} = (${lastExpressionLine});
 
   return ${nestedContent};
@@ -279,8 +279,7 @@ export function convertNodeToRenderString(node, imports, templateData) {
 
           attributeString += /* JS */ ` \${${
             isAsync ? "async " : ""
-          }function *() {
-  ${setupExpressionLines}
+          }function *() {${setupExpressionLines}
   const ${spreadableObjectVarName} = (${lastExpressionLine});
 
   for(const ${spreadAttrKeyVarName} in ${spreadableObjectVarName}) {
@@ -288,8 +287,9 @@ export function convertNodeToRenderString(node, imports, templateData) {
   }
 }}`;
         } else {
-          attributeString += /* JS */ `\${(${isAsync ? "async" : ""}() => {
-  ${setupExpressionLines}
+          attributeString += /* JS */ `\${(${
+            isAsync ? "async" : ""
+          }() => {${setupExpressionLines}
   return renderHTMLAttribute("${dynamicAttributeName}", (${lastExpressionLine}));
 })()}`;
         }
@@ -311,15 +311,7 @@ export function convertNodeToRenderString(node, imports, templateData) {
   const isSlot = tagName === "slot";
   const isFragment = isSlot || tagName === "_";
 
-  if (isSlot) {
-    hasDynamicContent = true;
-  }
-
   let renderString = "";
-
-  if (hasDynamicContent) {
-    renderString += "html`";
-  }
 
   if (!isFragment) {
     renderString += `<${tagName}${attributeString}>`;
@@ -327,15 +319,12 @@ export function convertNodeToRenderString(node, imports, templateData) {
 
   if (childNodes) {
     for (const child of childNodes) {
-      const { renderString: childRenderString, type: childType } =
-        convertNodeToRenderString(child, imports, templateData);
-
-      if (childType === "dynamic-html") {
-        renderString += `\${${childRenderString}}`;
-      } else {
-        renderString += childRenderString;
-      }
+      childString += convertNodeToRenderString(child, imports, templateData);
     }
+  }
+
+  if (shouldParseChildrenAsMarkdown) {
+    childString = /* JS */ `\${md\`${childString}\`}`;
   }
 
   if (!(tagName in voidTagNames)) {
@@ -353,35 +342,34 @@ export function convertNodeToRenderString(node, imports, templateData) {
   // TODO: add style and script handling
   // TODO: style attribute merging?
 
-  if (hasDynamicContent) {
-    renderString += "`";
-  }
-
   if (isSlot) {
     const slotName = node.attributes.find(
       (attr) => attr.name === "name"
     )?.value;
 
     if (slotName) {
-      renderString = /* JS */ `namedSlots?.${slotName} ?? ${renderString}`;
+      renderString = /* JS */ `\${namedSlots?.${slotName} ?? html\`${renderString}\`}`;
     } else {
-      renderString = /* JS */ `slot ?? ${renderString}`;
+      renderString = /* JS */ `\${slot ?? html\`${renderString}\`}`;
     }
   }
 
-  for (let i = renderConditionScopeGenerators.length - 1; i >= 0; --i) {
-    const generator = renderConditionScopeGenerators[i];
-    if (generator) {
-      renderString = generator(renderString);
+  const renderLogicScopeCount = renderLogicScopes.length;
+  if (renderLogicScopeCount > 0) {
+    renderString = `html\`${renderString}\``;
+  }
+
+  for (let i = renderLogicScopeCount - 1; i >= 0; --i) {
+    const scopeGenerator = renderLogicScopes[i];
+    if (scopeGenerator) {
+      renderString = scopeGenerator(renderString);
     }
   }
 
-  if (shouldParseChildrenAsMarkdown) {
-    renderString = /* JS */ `await md(${renderString})`;
+  if (renderLogicScopeCount > 0) {
+    // If there were any render condition scopes, wrap the entire render string with a ${}
+    renderString = `\${${renderString}}`;
   }
 
-  return {
-    renderString,
-    type: hasDynamicContent ? "dynamic-html" : "static-html",
-  };
+  return renderString;
 }

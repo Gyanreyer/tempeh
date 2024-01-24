@@ -66,45 +66,41 @@ export class TmphHTML {
       return;
     }
 
-    let isSyncGeneratorFunction = false;
-    let isAsyncGeneratorFunction = false;
-
-    switch (typeof expressionValue) {
-      case "function": {
-        const constructorName = expressionValue.constructor.name;
-        isSyncGeneratorFunction = constructorName === "GeneratorFunction";
-        isAsyncGeneratorFunction = constructorName === "AsyncGeneratorFunction";
-        break;
-      }
-      case "object": {
-        if (Symbol.asyncIterator in expressionValue) {
-          isAsyncGeneratorFunction = true;
-          // Re-assign the expressionValue to the async generator function, bound to the expressionValue object
-          // so references to `this` will work as expected
-          expressionValue = /** @type {AsyncGeneratorFunction} */ (
-            expressionValue[Symbol.asyncIterator]
-          ).bind(expressionValue);
-        } else if (Symbol.iterator in expressionValue) {
-          isSyncGeneratorFunction = true;
-          expressionValue = /** @type {GeneratorFunction} */ (
-            expressionValue[Symbol.iterator]
-          ).bind(expressionValue);
+    if (expressionValue instanceof TmphHTML) {
+      // Read the html text stream and forward chunks to the controller
+      const reader = expressionValue.textStream().getReader();
+      try {
+        for (
+          let readResult = await reader.read();
+          !readResult.done;
+          readResult = await reader.read()
+        ) {
+          controller.enqueue(readResult.value);
         }
-        break;
+      } finally {
+        reader.releaseLock();
+      }
+      return;
+    }
+
+    if (typeof expressionValue === "function") {
+      switch (expressionValue.constructor.name) {
+        case "GeneratorFunction": {
+          for (const chunk of expressionValue()) {
+            await TmphHTML.#enqueueExpressionValue(controller, chunk);
+          }
+          return;
+        }
+        case "AsyncGeneratorFunction": {
+          for await (const chunk of expressionValue()) {
+            await TmphHTML.#enqueueExpressionValue(controller, chunk);
+          }
+          return;
+        }
       }
     }
 
-    if (isSyncGeneratorFunction) {
-      for (const chunk of expressionValue()) {
-        await TmphHTML.#enqueueExpressionValue(controller, chunk);
-      }
-    } else if (isAsyncGeneratorFunction) {
-      for await (const chunk of expressionValue()) {
-        await TmphHTML.#enqueueExpressionValue(controller, chunk);
-      }
-    } else {
-      controller.enqueue(String(expressionValue));
-    }
+    controller.enqueue(String(expressionValue));
   };
 
   /**
@@ -116,27 +112,43 @@ export class TmphHTML {
     const strings = this.#strings;
     const expressions = this.#exps;
 
+    let expressionIndex = 0;
+    const expressionCount = expressions.length;
+
     return new ReadableStream({
       start(controller) {
         controller.enqueue(strings[0]);
-
-        (async () => {
-          for (
-            let expressionIndex = 0, expressionCount = expressions.length;
-            expressionIndex < expressionCount;
-            ++expressionIndex
-          ) {
-            await TmphHTML.#enqueueExpressionValue(
-              controller,
-              expressions[expressionIndex]
-            );
-
-            // Yield the next static string content following the nested TmphHTML expression
-            controller.enqueue(strings[expressionIndex + 1]);
-          }
-
+        if (expressionCount === 0) {
+          // If there aren't any expressions, close the controller right away
           controller.close();
-        })();
+        }
+      },
+      async pull(controller) {
+        try {
+          await TmphHTML.#enqueueExpressionValue(
+            controller,
+            expressions[expressionIndex]
+          );
+        } catch (error) {
+          console.error(
+            "An error occurred while rendering Tempeh HTML:",
+            error
+          );
+        }
+
+        ++expressionIndex;
+        // Enqueue the next string; there will always be one more string
+        // than there are expressions, even if the expression occurs at the very start
+        // or end of the template (there will be an additional empty string at the start or end in that case)
+        const nextString = strings[expressionIndex];
+        if (nextString) {
+          controller.enqueue(nextString);
+        }
+
+        // If there aren't any more expressions, close the controller
+        if (expressionIndex >= expressionCount) {
+          controller.close();
+        }
       },
     });
   }
