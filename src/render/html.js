@@ -1,37 +1,22 @@
 export class TmphHTML {
-  #strings;
-  #exps;
+  #used = false;
 
   /**
-   * @param {TemplateStringsArray} strings
-   * @param  {...unknown} exps
+   * Whether the html stream has been used. A TmphHTML stream can only be used once,
+   * and will throw an error after that.
+   *
+   * @example
+   * const myHTML = html`<div>Content</div>`;
+   * myHTML.used; // false
+   * const text = await myHTML.text();
+   * myHTML.used; // true
+   * const text2 = await myHTML.text(); // Error: Tempeh Error: html stream already used.
    */
-  constructor(strings, ...exps) {
-    /** @type {TemplateStringsArray} */
-    this.#strings = strings;
-    /** @type {unknown[]} */
-    this.#exps = exps;
+  get used() {
+    return this.#used;
   }
 
-  /**
-   * Async generator which yields each chunk of the html text stream as it is rendered.
-   */
-  async *[Symbol.asyncIterator]() {
-    const textStream = this.textStream();
-    const reader = textStream.getReader();
-
-    try {
-      for (
-        let readResult = await reader.read();
-        !readResult.done;
-        readResult = await reader.read()
-      ) {
-        yield readResult.value;
-      }
-    } finally {
-      reader.releaseLock();
-    }
-  }
+  #stream;
 
   /**
    * Takes a readable stream controller and an expression value and enqueues
@@ -104,53 +89,96 @@ export class TmphHTML {
   };
 
   /**
+   * @param {TemplateStringsArray} _strings
+   * @param  {...unknown} _expressions
+   */
+  constructor(_strings, ..._expressions) {
+    /** @type {TemplateStringsArray | null} */
+    let strings = _strings;
+    /** @type {unknown[] | null} */
+    let expressions = _expressions;
+
+    let expressionIndex = 0;
+    const expressionCount = expressions.length;
+
+    this.#stream = /** @type {ReadableStream<string>} */ (
+      new ReadableStream({
+        start(controller) {
+          controller.enqueue(strings?.[0]);
+          if (expressionCount === 0) {
+            // If there aren't any expressions, close the controller right away
+            controller.close();
+            // Clear the references to the strings and expressions arrays so they can be garbage collected
+            strings = null;
+            expressions = null;
+          }
+        },
+        async pull(controller) {
+          try {
+            await TmphHTML.#enqueueExpressionValue(
+              controller,
+              expressions?.[expressionIndex]
+            );
+          } catch (error) {
+            console.error(
+              "An error occurred while rendering Tempeh HTML:",
+              error
+            );
+          }
+
+          ++expressionIndex;
+          // Enqueue the next string; there will always be one more string
+          // than there are expressions, even if the expression occurs at the very start
+          // or end of the template (there will be an additional empty string at the start or end in that case)
+          const nextString = strings?.[expressionIndex];
+          if (nextString) {
+            controller.enqueue(nextString);
+          }
+
+          // If there aren't any more expressions, close the controller
+          if (expressionIndex >= expressionCount) {
+            controller.close();
+            // Clear the references to the strings and expressions arrays so they can be garbage collected
+            strings = null;
+            expressions = null;
+          }
+        },
+      })
+    );
+  }
+
+  /**
    * Gets a ReadableStream<string> which can be used to stream the html as a string
    *
    * @returns {ReadableStream<string>}
    */
   textStream() {
-    const strings = this.#strings;
-    const expressions = this.#exps;
+    if (this.#used) {
+      throw new Error("Tempeh Error: html stream already used.");
+    }
 
-    let expressionIndex = 0;
-    const expressionCount = expressions.length;
+    this.#used = true;
+    return this.#stream;
+  }
 
-    return new ReadableStream({
-      start(controller) {
-        controller.enqueue(strings[0]);
-        if (expressionCount === 0) {
-          // If there aren't any expressions, close the controller right away
-          controller.close();
-        }
-      },
-      async pull(controller) {
-        try {
-          await TmphHTML.#enqueueExpressionValue(
-            controller,
-            expressions[expressionIndex]
-          );
-        } catch (error) {
-          console.error(
-            "An error occurred while rendering Tempeh HTML:",
-            error
-          );
-        }
+  /**
+   * Async generator which yields each chunk of the html text stream as it is rendered.
+   */
+  async *[Symbol.asyncIterator]() {
+    const textStream = this.textStream();
+    const reader = textStream.getReader();
 
-        ++expressionIndex;
-        // Enqueue the next string; there will always be one more string
-        // than there are expressions, even if the expression occurs at the very start
-        // or end of the template (there will be an additional empty string at the start or end in that case)
-        const nextString = strings[expressionIndex];
-        if (nextString) {
-          controller.enqueue(nextString);
-        }
-
-        // If there aren't any more expressions, close the controller
-        if (expressionIndex >= expressionCount) {
-          controller.close();
-        }
-      },
-    });
+    try {
+      for (
+        let readResult = await reader.read();
+        !readResult.done;
+        readResult = await reader.read()
+      ) {
+        yield readResult.value;
+      }
+    } finally {
+      reader.releaseLock();
+    }
   }
 
   /**

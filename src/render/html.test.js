@@ -307,4 +307,18 @@ And I can do whatever I want
     </body>`,
     ]);
   });
+
+  test("html streams can only be used once", async () => {
+    const htmlGenerator = html`<p>Some content</p>`;
+
+    assert.strictEqual(htmlGenerator.used, false);
+
+    assert.strictEqual(await htmlGenerator.text(), "<p>Some content</p>");
+
+    assert.strictEqual(htmlGenerator.used, true);
+
+    await assert.rejects(() => htmlGenerator.text(), {
+      message: "Tempeh Error: html stream already used.",
+    });
+  });
 });
