@@ -1,5 +1,6 @@
 export class TmphHTML {
-  #used = false;
+  /** @type {ReadableStream<string> | null} */
+  #stream;
 
   /**
    * Whether the html stream has been used. A TmphHTML stream can only be used once,
@@ -13,10 +14,55 @@ export class TmphHTML {
    * const text2 = await myHTML.text(); // Error: Tempeh Error: html stream already used.
    */
   get used() {
-    return this.#used;
+    return this.#stream === null;
   }
 
-  #stream;
+  /**
+   * @param {TemplateStringsArray} _strings
+   * @param  {...unknown} _expressions
+   */
+  constructor(_strings, ..._expressions) {
+    /** @type {TemplateStringsArray | null} */
+    let strings = _strings;
+    /** @type {unknown[] | null} */
+    let expressions = _expressions;
+
+    let stringIndex = 0;
+    const stringCount = strings.length;
+    const expressionCount = expressions.length;
+
+    this.#stream = new ReadableStream({
+      async pull(controller) {
+        if (strings) {
+          controller.enqueue(strings[stringIndex]);
+
+          if (expressions && stringIndex < expressionCount) {
+            try {
+              await TmphHTML.#enqueueExpressionValue(
+                controller,
+                expressions[stringIndex]
+              );
+            } catch (error) {
+              console.error(
+                "An error occurred while rendering Tempeh HTML:",
+                error
+              );
+            }
+          } else {
+            // If we've enqueued the last expression, clear the reference to the expressions array
+            expressions = null;
+          }
+        }
+
+        if (++stringIndex >= stringCount) {
+          // If we've enqueued the last string, clear the reference to the strings array
+          // and close the controller; the stream is done!
+          strings = null;
+          controller.close();
+        }
+      },
+    });
+  }
 
   /**
    * Takes a readable stream controller and an expression value and enqueues
@@ -25,7 +71,7 @@ export class TmphHTML {
    * @param {any} expressionValue
    */
   static #enqueueExpressionValue = async (controller, expressionValue) => {
-    // Skip undefined, null, false, and empty string values
+    // Skip undefined, null, false, and empty string values (but not 0!)
     if (
       expressionValue === undefined ||
       expressionValue === null ||
@@ -55,11 +101,9 @@ export class TmphHTML {
       // Read the html text stream and forward chunks to the controller
       const reader = expressionValue.textStream().getReader();
       try {
-        for (
-          let readResult = await reader.read();
-          !readResult.done;
-          readResult = await reader.read()
-        ) {
+        /** @type {Awaited<ReturnType<typeof reader.read>>} */
+        let readResult;
+        while (!(readResult = await reader.read()).done) {
           controller.enqueue(readResult.value);
         }
       } finally {
@@ -69,6 +113,7 @@ export class TmphHTML {
     }
 
     if (typeof expressionValue === "function") {
+      // Unwrap generator functions
       switch (expressionValue.constructor.name) {
         case "GeneratorFunction": {
           for (const chunk of expressionValue()) {
@@ -85,67 +130,10 @@ export class TmphHTML {
       }
     }
 
+    // If the expression value wasn't a special type which needed to be unwrapped,
+    // just cast it as a string and enqueue it.
     controller.enqueue(String(expressionValue));
   };
-
-  /**
-   * @param {TemplateStringsArray} _strings
-   * @param  {...unknown} _expressions
-   */
-  constructor(_strings, ..._expressions) {
-    /** @type {TemplateStringsArray | null} */
-    let strings = _strings;
-    /** @type {unknown[] | null} */
-    let expressions = _expressions;
-
-    let expressionIndex = 0;
-    const expressionCount = expressions.length;
-
-    this.#stream = /** @type {ReadableStream<string>} */ (
-      new ReadableStream({
-        start(controller) {
-          controller.enqueue(strings?.[0]);
-          if (expressionCount === 0) {
-            // If there aren't any expressions, close the controller right away
-            controller.close();
-            // Clear the references to the strings and expressions arrays so they can be garbage collected
-            strings = null;
-            expressions = null;
-          }
-        },
-        async pull(controller) {
-          try {
-            await TmphHTML.#enqueueExpressionValue(
-              controller,
-              expressions?.[expressionIndex]
-            );
-          } catch (error) {
-            console.error(
-              "An error occurred while rendering Tempeh HTML:",
-              error
-            );
-          }
-
-          ++expressionIndex;
-          // Enqueue the next string; there will always be one more string
-          // than there are expressions, even if the expression occurs at the very start
-          // or end of the template (there will be an additional empty string at the start or end in that case)
-          const nextString = strings?.[expressionIndex];
-          if (nextString) {
-            controller.enqueue(nextString);
-          }
-
-          // If there aren't any more expressions, close the controller
-          if (expressionIndex >= expressionCount) {
-            controller.close();
-            // Clear the references to the strings and expressions arrays so they can be garbage collected
-            strings = null;
-            expressions = null;
-          }
-        },
-      })
-    );
-  }
 
   /**
    * Gets a ReadableStream<string> which can be used to stream the html as a string
@@ -153,12 +141,16 @@ export class TmphHTML {
    * @returns {ReadableStream<string>}
    */
   textStream() {
-    if (this.#used) {
+    const stream = this.#stream;
+
+    if (!stream) {
       throw new Error("Tempeh Error: html stream already used.");
     }
 
-    this.#used = true;
-    return this.#stream;
+    // Streams can only be consumed once, so clear our reference to the stream
+    this.#stream = null;
+
+    return stream;
   }
 
   /**
@@ -169,11 +161,9 @@ export class TmphHTML {
     const reader = textStream.getReader();
 
     try {
-      for (
-        let readResult = await reader.read();
-        !readResult.done;
-        readResult = await reader.read()
-      ) {
+      /** @type {Awaited<ReturnType<typeof reader.read>>} */
+      let readResult;
+      while (!(readResult = await reader.read()).done) {
         yield readResult.value;
       }
     } finally {
@@ -194,11 +184,9 @@ export class TmphHTML {
     const reader = textStream.getReader();
 
     try {
-      for (
-        let readResult = await reader.read();
-        !readResult.done;
-        readResult = await reader.read()
-      ) {
+      /** @type {Awaited<ReturnType<typeof reader.read>>} */
+      let readResult;
+      while (!(readResult = await reader.read()).done) {
         accumulatedText += readResult.value;
       }
     } finally {
@@ -224,8 +212,7 @@ export class TmphHTML {
    * @returns {Promise<Uint8Array>}
    */
   async arrayBuffer() {
-    const text = await this.text();
-    return new TextEncoder().encode(text);
+    return new TextEncoder().encode(await this.text());
   }
 
   /**
