@@ -60,9 +60,9 @@ export declare class TmphNode extends Message<TmphNode> {
   column: number;
 
   /**
-   * @generated from field: string tagName = 3;
+   * @generated from field: optional string tagName = 3;
    */
-  tagName: string;
+  tagName?: string;
 
   /**
    * @generated from field: repeated pb.Attribute attributes = 4;

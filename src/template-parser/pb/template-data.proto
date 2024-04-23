@@ -14,7 +14,7 @@ message Attribute {
 message TmphNode {
   uint32 line = 1;
   uint32 column = 2;
-  string tagName = 3;
+  optional string tagName = 3;
   repeated Attribute attributes = 4;
   repeated TmphNode childNodes = 5;
   optional string textContent = 6;

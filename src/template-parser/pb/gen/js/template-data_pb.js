@@ -26,7 +26,7 @@ export const TmphNode = proto3.makeMessageType(
   () => [
     { no: 1, name: "line", kind: "scalar", T: 13 /* ScalarType.UINT32 */ },
     { no: 2, name: "column", kind: "scalar", T: 13 /* ScalarType.UINT32 */ },
-    { no: 3, name: "tagName", kind: "scalar", T: 9 /* ScalarType.STRING */ },
+    { no: 3, name: "tagName", kind: "scalar", T: 9 /* ScalarType.STRING */, opt: true },
     { no: 4, name: "attributes", kind: "message", T: Attribute, repeated: true },
     { no: 5, name: "childNodes", kind: "message", T: TmphNode, repeated: true },
     { no: 6, name: "textContent", kind: "scalar", T: 9 /* ScalarType.STRING */, opt: true },
