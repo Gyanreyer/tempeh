@@ -36,3 +36,8 @@ func isScriptQuoteChar(char rune) bool {
 func isStyleQuoteChar(char rune) bool {
 	return char == '"' || char == '\''
 }
+
+// Child content of these elements are parsed as raw text instead of HTML
+func isRawTextContentElementTagName(tagName string) bool {
+	return tagName == "script" || tagName == "style" || tagName == "textarea"
+}

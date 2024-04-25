@@ -251,7 +251,7 @@ func LexOpeningTagContents(l *Lexer) StateFn {
 			if prevChar != nil && *prevChar == '/' {
 				// Self-closing tag
 				l.Emit(LT_SELFCLOSINGTAGEND, "", l.line, l.column)
-			} else if l.lastTagName == "script" || l.lastTagName == "style" {
+			} else if isRawTextContentElementTagName(l.lastTagName) {
 				return LexRawElementContent
 			}
 			// Go back to lexing text content; if a self closing tag, that will be the content after this tag, otherwise it

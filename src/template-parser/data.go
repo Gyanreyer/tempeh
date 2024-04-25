@@ -3,20 +3,20 @@ package main
 import "fmt"
 
 type Attribute struct {
-	Line  int    `json:"l"`
-	Col   int    `json:"c"`
 	Name  string `json:"name"`
 	Value string `json:"value"`
+	Line  int    `json:"l"`
+	Col   int    `json:"c"`
 }
 
 type Node struct {
-	Line        int          `json:"l"`
-	Col         int          `json:"c"`
 	TagName     string       `json:"tagName,omitempty"`
 	TextContent string       `json:"textContent,omitempty"`
 	Attributes  []*Attribute `json:"attributes,omitempty"`
 	Children    []*Node      `json:"children,omitempty"`
 	Parent      *Node        `json:"-"` // This field is not serialized
+	Line        int          `json:"l"`
+	Col         int          `json:"c"`
 }
 
 func (n *Node) AddChild(child *Node) {
