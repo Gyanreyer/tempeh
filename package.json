@@ -1,17 +1,19 @@
 {
   "type": "module",
   "dependencies": {
-    "@bufbuild/buf": "^1.28.1",
-    "@bufbuild/protobuf": "^1.6.0",
-    "@bufbuild/protoc-gen-es": "^1.6.0",
     "@minify-html/node": "^0.11.1",
+    "astring": "^1.8.6",
     "esbuild": "^0.19.5",
     "lightningcss": "^1.22.0",
     "marked": "^9.1.2"
   },
   "scripts": {
-    "protoc": "npx buf generate --template=./src/template-parser/pb/buf.gen.yaml --output=./src/template-parser/pb ./src/template-parser/pb",
     "build-template-parser": "go build -C ./src/template-parser -o ../../bin/parse-template",
     "test": "node --test"
+  },
+  "devDependencies": {
+    "@types/express": "^4.17.21",
+    "express": "^4.18.3",
+    "meriyah": "^4.4.1"
   }
 }

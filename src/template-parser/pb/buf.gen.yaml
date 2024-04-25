@@ -1,8 +1,0 @@
-version: v1
-plugins:
-  - plugin: es
-    opt: target=js+dts
-    out: gen/js
-  - plugin: go
-    opt: paths=source_relative
-    out: gen/go

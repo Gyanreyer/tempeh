@@ -50,12 +50,11 @@ func (lt *LexerToken) String() string {
 }
 
 type Lexer struct {
-	reader          *bufio.Reader
-	line            int
-	column          int
-	previousCharBuf []rune
-	tokens          chan *LexerToken
-	lastTagName     string
+	reader      *bufio.Reader
+	line        int
+	column      int
+	tokens      chan *LexerToken
+	lastTagName string
 }
 
 func NewLexer(reader *bufio.Reader) *Lexer {
@@ -63,11 +62,7 @@ func NewLexer(reader *bufio.Reader) *Lexer {
 		reader: reader,
 		line:   1,
 		column: 1,
-		// Buffer hangs on to last 4 characters to help with lexing. Ordered from most recent to least recent,
-		// where the most recently read character is at index 0 and the least recently read character is at index 3.
-		// -1 represents chars before the start of the file
-		previousCharBuf: []rune{-1, -1, -1, -1},
-		tokens:          make(chan *LexerToken),
+		tokens: make(chan *LexerToken),
 		// Track the last tag name; necessary context to determine how an element's content should
 		// processed since script and style tags have raw content
 		lastTagName: "",
@@ -92,8 +87,6 @@ func (l *Lexer) ReadRune() (r rune, err error) {
 		} else {
 			l.column++
 		}
-
-		l.UnshiftPrevCharBuf(r)
 	}
 
 	return r, err
@@ -107,25 +100,7 @@ func (l *Lexer) UnreadRune() (err error) {
 		l.column--
 	}
 
-	l.ShiftPrevCharBuf()
 	return err
-}
-
-func (l *Lexer) UnshiftPrevCharBuf(char rune) {
-	// Add a new character to the front of the buffer and shift the rest of the buffer up
-	l.previousCharBuf[3] = l.previousCharBuf[2]
-	l.previousCharBuf[2] = l.previousCharBuf[1]
-	l.previousCharBuf[1] = l.previousCharBuf[0]
-	l.previousCharBuf[0] = char
-}
-
-func (l *Lexer) ShiftPrevCharBuf() {
-	// Shift chars down the buffer; this will leave an empty space at the end of the buffer.
-	// This is okay because the buffer is only used to look back at the last 2 characters and unread can't be called more than once in a row.
-	l.previousCharBuf[0] = l.previousCharBuf[1]
-	l.previousCharBuf[1] = l.previousCharBuf[2]
-	l.previousCharBuf[2] = l.previousCharBuf[3]
-	l.previousCharBuf[3] = -1
 }
 
 func (l *Lexer) Run() {
@@ -165,57 +140,47 @@ func LexTextContent(l *Lexer) StateFn {
 			return nil
 		}
 
-		if nextChar == '<' {
-			nextChar, err = l.ReadRune()
+		if isLegalLeadingTagNameChar(nextChar) {
+			textContentLength := len(textContentRunes)
 
-			if err != nil {
+			if textContentLength > 0 && textContentRunes[textContentLength-1] == '<' {
+				// Slice off the '<' character that was appended to the text content since that's part of the tag
+				textContentRunes = textContentRunes[:textContentLength-1]
 				emitTextContent()
-				if err == io.EOF {
-					l.Emit(LT_EOF, "", l.line, l.column)
-				} else {
-					l.Emit(LT_ERROR, err.Error(), l.line, l.column)
-				}
-				return nil
-			}
-
-			if isLegalLeadingTagNameChar(nextChar) {
-				emitTextContent()
-				// Unread so the next state func can read the character which caused this state to end
+				// Unread so the next state func can read the first character of the tag name
 				if err = l.UnreadRune(); err != nil {
 					l.Emit(LT_ERROR, err.Error(), l.line, l.column)
 					return nil
 				}
 				return LexOpeningTagName
-			} else if nextChar == '/' {
-				nextChar, err = l.ReadRune()
-
-				if err != nil {
-					emitTextContent()
-					if err == io.EOF {
-						l.Emit(LT_EOF, "", l.line, l.column)
-					} else {
-						l.Emit(LT_ERROR, err.Error(), l.line, l.column)
-					}
+			} else if textContentLength >= 2 && textContentRunes[textContentLength-2] == '<' && textContentRunes[textContentLength-1] == '/' {
+				// Slice off the "</" characters that were appended to the text content since that's part of the closing tag
+				textContentRunes = textContentRunes[:textContentLength-2]
+				emitTextContent()
+				// Unread so the next state func can start with the first letter of the tag name
+				if err = l.UnreadRune(); err != nil {
+					l.Emit(LT_ERROR, err.Error(), l.line, l.column)
 					return nil
 				}
-
-				if isLegalLeadingTagNameChar(nextChar) {
-					emitTextContent()
-					// Unread so the next state func can start with the first letter of the tag name
-					if err = l.UnreadRune(); err != nil {
-						l.Emit(LT_ERROR, err.Error(), l.line, l.column)
-						return nil
-					}
-					return LexClosingTagName
-				} else {
-					textContentRunes = append(textContentRunes, '<', '/', nextChar)
-				}
-			} else {
-				textContentRunes = append(textContentRunes, '<', nextChar)
+				return LexClosingTagName
 			}
-		} else {
-			textContentRunes = append(textContentRunes, nextChar)
+		} else if nextChar == '-' {
+			textContentLength := len(textContentRunes)
+			// See if previous chars match "<!-"
+			if textContentLength >= 3 && textContentRunes[textContentLength-3] == '<' && textContentRunes[textContentLength-2] == '!' && textContentRunes[textContentLength-1] == '-' {
+				// Slice off the "<!-" characters that were appended to the text content since that's part of the comment
+				textContentRunes = textContentRunes[:textContentLength-3]
+				emitTextContent()
+				// Unread so the next state func can start with the first character of the comment
+				if err = l.UnreadRune(); err != nil {
+					l.Emit(LT_ERROR, err.Error(), l.line, l.column)
+					return nil
+				}
+				return LexCommentTag
+			}
 		}
+
+		textContentRunes = append(textContentRunes, nextChar)
 	}
 }
 
@@ -264,6 +229,8 @@ func LexOpeningTagName(l *Lexer) StateFn {
 // Reads until the end of the opening tag and emits LT_SELFCLOSINGTAGEND token if the tag is self-closing, but will divert
 // to lex attribute names if a legal attribute name character is encountered.
 func LexOpeningTagContents(l *Lexer) StateFn {
+	var prevChar *rune
+
 	for {
 		nextChar, err := l.ReadRune()
 		if err != nil {
@@ -281,7 +248,7 @@ func LexOpeningTagContents(l *Lexer) StateFn {
 			continue
 		} else if nextChar == '>' {
 			// End of opening tag
-			if l.previousCharBuf[1] == '/' {
+			if prevChar != nil && *prevChar == '/' {
 				// Self-closing tag
 				l.Emit(LT_SELFCLOSINGTAGEND, "", l.line, l.column)
 			} else if l.lastTagName == "script" || l.lastTagName == "style" {
@@ -299,6 +266,8 @@ func LexOpeningTagContents(l *Lexer) StateFn {
 			// Attribute name
 			return LexOpeningTagAttributeName
 		}
+
+		prevChar = &nextChar
 	}
 }
 
@@ -405,10 +374,23 @@ func LexOpeningTagQuotedAttributeValue(l *Lexer) StateFn {
 			return nil
 		}
 
-		if nextChar == openingQuoteChar && l.previousCharBuf[1] != '\\' {
-			// If the next character is the closing quote character and the character before it is not an escape character, then we have reached the end of the attribute value
-			emitAttrValue()
-			return LexOpeningTagContents
+		if nextChar == openingQuoteChar {
+			escapeCharCount := 0
+
+			for i := len(attrValueRunes) - 1; i >= 0; i-- {
+				if attrValueRunes[i] == '\\' {
+					escapeCharCount++
+				} else {
+					// Break on the first non-escape character
+					break
+				}
+			}
+
+			if escapeCharCount%2 == 0 {
+				// If the next character is the closing quote character and it isn't escaped, then we have reached the end of the attribute value
+				emitAttrValue()
+				return LexOpeningTagContents
+			}
 		}
 
 		attrValueRunes = append(attrValueRunes, nextChar)
@@ -454,14 +436,14 @@ func LexOpeningTagUnquotedAttributeValue(l *Lexer) StateFn {
 // Read the raw contents of a script or style tag until the closing tag is encountered.
 // Emits LT_TEXTCONTENT token.
 func LexRawElementContent(l *Lexer) StateFn {
-	scriptContentRunes := make([]rune, 0)
+	rawTextContentRunes := make([]rune, 0)
 	startLine := l.line
 	startCol := l.column
 
 	elementTagName := l.lastTagName
 
-	var emitScriptContent = func() {
-		l.Emit(LT_TEXTCONTENT, string(scriptContentRunes), startLine, startCol)
+	var emitTextContent = func() {
+		l.Emit(LT_TEXTCONTENT, string(rawTextContentRunes), startLine, startCol)
 	}
 
 	var unterminatedQuoteChar *rune
@@ -469,7 +451,7 @@ func LexRawElementContent(l *Lexer) StateFn {
 	for {
 		nextChar, err := l.ReadRune()
 		if err != nil {
-			emitScriptContent()
+			emitTextContent()
 			if err == io.EOF {
 				l.Emit(LT_EOF, "", l.line, l.column)
 			} else {
@@ -478,25 +460,52 @@ func LexRawElementContent(l *Lexer) StateFn {
 			return nil
 		}
 
-		if unterminatedQuoteChar != nil && nextChar == *unterminatedQuoteChar && l.previousCharBuf[1] != '\\' {
-			unterminatedQuoteChar = nil
-			scriptContentRunes = append(scriptContentRunes, nextChar)
-		} else if unterminatedQuoteChar == nil && (elementTagName == "script" && isScriptQuoteChar(nextChar)) || (elementTagName == "style" && isStyleQuoteChar(nextChar)) {
+		if unterminatedQuoteChar != nil {
+			if nextChar == *unterminatedQuoteChar {
+				// Count how many backslash escape characters precede the quote character.
+				// If the count is even, the quote character is not escaped and is the closing quote character.
+				// Examples:
+				// "quote: \"" -> '"' is escaped, '"' is not"
+				// "backslash: \\" -> '\' is escaped, '"' is not"
+				// "backslash and quote: \\\"" -> '\' is escaped, '"' is escaped, final '"' is not
+				escapeCharCount := 0
+
+				for i := len(rawTextContentRunes) - 1; i >= 0; i-- {
+					if rawTextContentRunes[i] == '\\' {
+						escapeCharCount++
+					} else {
+						// Break on the first non-escape character
+						break
+					}
+				}
+
+				if escapeCharCount%2 == 0 {
+					// The quote character is not escaped, so we can now consider it terminated
+					unterminatedQuoteChar = nil
+				}
+			}
+			rawTextContentRunes = append(rawTextContentRunes, nextChar)
+		} else if (elementTagName == "script" && isScriptQuoteChar(nextChar)) || (elementTagName == "style" && isStyleQuoteChar(nextChar)) {
+			// We've encountered the opening quote character for a string in a script or style tag
 			unterminatedQuoteChar = &nextChar
-			scriptContentRunes = append(scriptContentRunes, nextChar)
+			rawTextContentRunes = append(rawTextContentRunes, nextChar)
 		} else if nextChar == '<' {
+			// If there is no unterminated quote character, check if we just hit a closing tag
 			closingTagNameLine := l.line
 			closingTagNameCol := l.column
 
-			// check for the 8 chars in </script
-			expectedClosingTagNameChars := []rune("</script")
+			// check for the chars in </script or </style
+			expectedClosingTagChars := []rune("</" + elementTagName)
 
+			actualChars := make([]rune, 0, len(expectedClosingTagChars))
+			actualChars = append(actualChars, nextChar)
+
+			closingTagNameCharCount := len(expectedClosingTagChars)
 			didMatchClosingTagName := true
 
-			for i := 1; i < 8; i++ {
-				nextChar, err = l.ReadRune()
-				if err != nil {
-					emitScriptContent()
+			for i := 1; i < closingTagNameCharCount; i++ {
+				if nextChar, err = l.ReadRune(); err != nil {
+					emitTextContent()
 					if err == io.EOF {
 						l.Emit(LT_EOF, "", l.line, l.column)
 					} else {
@@ -505,52 +514,78 @@ func LexRawElementContent(l *Lexer) StateFn {
 					return nil
 				}
 
-				if nextChar != expectedClosingTagNameChars[i] {
-					// If the next character does not match the expected closing tag name, add the character to the script content
-					scriptContentRunes = append(scriptContentRunes, expectedClosingTagNameChars[:i]...)
-					scriptContentRunes = append(scriptContentRunes, nextChar)
+				actualChars = append(actualChars, nextChar)
+
+				if nextChar != expectedClosingTagChars[i] {
 					didMatchClosingTagName = false
 					break
 				}
-
 			}
 
 			if didMatchClosingTagName {
-				// It matches a closing tag!
-				emitScriptContent()
-				l.Emit(LT_CLOSINGTAGNAME, "script", closingTagNameLine, closingTagNameCol)
-				// Finish lexing the closing tag
-				return LexClosingTag
+				// We need to read one last character to make sure the tag name is terminated correctly
+				// to be an exact match; we don't want to be fooled by a malformed `</scriptttt` tag name
+				if nextChar, err = l.ReadRune(); err != nil {
+					emitTextContent()
+					if err == io.EOF {
+						l.Emit(LT_EOF, "", l.line, l.column)
+					} else {
+						l.Emit(LT_ERROR, err.Error(), l.line, l.column)
+					}
+					return nil
+				}
+
+				actualChars = append(actualChars, nextChar)
+
+				if !isLegalTagOrAttributeNameChar(nextChar) {
+					// It matches a closing tag!
+					emitTextContent()
+					l.Emit(LT_CLOSINGTAGNAME, elementTagName, closingTagNameLine, closingTagNameCol)
+					// Unread so the next state func can read the character which caused this state to end
+					if err = l.UnreadRune(); err != nil {
+						l.Emit(LT_ERROR, err.Error(), l.line, l.column)
+						return nil
+					}
+					// Finish lexing the closing tag
+					return LexClosingTag
+				}
 			}
+
+			// If we didn't hit on a closing tag match, add all of the characters we read so far to the script content
+			rawTextContentRunes = append(rawTextContentRunes, actualChars...)
 		} else {
-			scriptContentRunes = append(scriptContentRunes, nextChar)
+			rawTextContentRunes = append(rawTextContentRunes, nextChar)
 		}
 	}
 }
 
-// func LexRawStyleContent(l *Lexer) StateFn {
-// 	// styleContentRunes := make([]rune, 0)
-// 	// startLine := l.line
-// 	// startCol := l.column
-// 	// var emitStyleContent = func() {
-// 	// 	l.Emit(LT_TEXTCONTENT, string(styleContentRunes), startLine, startCol)
-// 	// }
-// 	// for {
-// 	// 	nextChar, err := l.ReadRune()
-// 	// 	if err != nil {…}
-// 	// 	if nextChar == '<' {
-// 	// 		// Check if it's the closing style tag
-// 	// 		if l.previousCharBuf[1] == '/' {
-// 	// 			// Check if the next characters match the closing style tag name
-// 	// 			if matchClosingTagName(l, "style") {
-// 	// 				emitStyleContent()
-// 	// 				return LexTextContent
-// 	// 			}
-// 	// 		}
-// 	// 	}
-// 	// 	styleContentRunes = append(styleContentRunes, nextChar)
-// 	// }
-// }
+// HTML comment tags are of the form <!-- ... -->.
+// Reads until the closing --> is encountered.
+// We don't need to emit a token for comments, just want to skip them
+func LexCommentTag(l *Lexer) StateFn {
+	var prevChar *rune
+	var prevPrevChar *rune
+
+	for {
+		nextChar, err := l.ReadRune()
+		if err != nil {
+			if err == io.EOF {
+				l.Emit(LT_EOF, "", l.line, l.column)
+			} else {
+				l.Emit(LT_ERROR, err.Error(), l.line, l.column)
+			}
+			return nil
+		}
+
+		if prevPrevChar != nil && prevChar != nil && *prevPrevChar == '-' && *prevChar == '-' && nextChar == '>' {
+			// The comment has been terminated with -->
+			return LexTextContent
+		}
+
+		prevPrevChar = prevChar
+		prevChar = &nextChar
+	}
+}
 
 // Reads until the end of the tag name.
 // emits LT_CLOSINGTAGNAME token
