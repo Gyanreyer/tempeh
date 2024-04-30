@@ -211,7 +211,7 @@ func LexOpeningTagName(l *Lexer) StateFn {
 			return nil
 		}
 
-		if isLegalTagOrAttributeNameChar(nextChar) {
+		if isLegalTagNameChar(nextChar) {
 			tagNameRunes = append(tagNameRunes, nextChar)
 		} else {
 			emitTagName()
@@ -248,8 +248,8 @@ func LexOpeningTagContents(l *Lexer) StateFn {
 			continue
 		} else if nextChar == '>' {
 			// End of opening tag
-			if prevChar != nil && *prevChar == '/' {
-				// Self-closing tag
+			if (prevChar != nil && *prevChar == '/') || isVoidTag(l.lastTagName) {
+				// Self-closing tag or void tag which is implicitly self-closing per HTML spec
 				l.Emit(LT_SELFCLOSINGTAGEND, "", l.line, l.column)
 			} else if isRawTextContentElementTagName(l.lastTagName) {
 				return LexRawElementContent
@@ -257,7 +257,7 @@ func LexOpeningTagContents(l *Lexer) StateFn {
 			// Go back to lexing text content; if a self closing tag, that will be the content after this tag, otherwise it
 			// will be the content inside the tag
 			return LexTextContent
-		} else if isLegalTagOrAttributeNameChar(nextChar) {
+		} else if isLegalAttributeNameChar(nextChar) {
 			// Unread so the first character of the attribute name can be read by the next state func
 			if err = l.UnreadRune(); err != nil {
 				l.Emit(LT_ERROR, err.Error(), l.line, l.column)
@@ -297,8 +297,7 @@ func LexOpeningTagAttributeName(l *Lexer) StateFn {
 		}
 
 		if nextChar == '=' {
-			nextChar, err = l.ReadRune()
-			if err != nil {
+			if nextChar, err = l.ReadRune(); err != nil {
 				emitAttrName()
 				if err == io.EOF {
 					l.Emit(LT_EOF, "", l.line, l.column)
@@ -318,12 +317,12 @@ func LexOpeningTagAttributeName(l *Lexer) StateFn {
 
 			if isAttributeValueQuoteChar(nextChar) {
 				return LexOpeningTagQuotedAttributeValue
-			} else if isLegalTagOrAttributeNameChar(nextChar) {
+			} else if isLegalUnquotedAttributeValueChar(nextChar) {
 				return LexOpeningTagUnquotedAttributeValue
 			} else {
 				return LexOpeningTagContents
 			}
-		} else if !isLegalTagOrAttributeNameChar(nextChar) {
+		} else if !isLegalAttributeNameChar(nextChar) {
 			emitAttrName()
 
 			// Unread so the next state func can read the character which caused this state to end
@@ -430,6 +429,8 @@ func LexOpeningTagUnquotedAttributeValue(l *Lexer) StateFn {
 			}
 			return LexOpeningTagContents
 		}
+
+		attrValueRunes = append(attrValueRunes, nextChar)
 	}
 }
 
@@ -537,8 +538,7 @@ func LexRawElementContent(l *Lexer) StateFn {
 
 				actualChars = append(actualChars, nextChar)
 
-				if !isLegalTagOrAttributeNameChar(nextChar) {
-					// It matches a closing tag!
+				if !isLegalTagNameChar(nextChar) {
 					emitTextContent()
 					l.Emit(LT_CLOSINGTAGNAME, elementTagName, closingTagNameLine, closingTagNameCol)
 					// Unread so the next state func can read the character which caused this state to end
@@ -611,7 +611,7 @@ func LexClosingTagName(l *Lexer) StateFn {
 			return nil
 		}
 
-		if !isLegalTagOrAttributeNameChar(nextChar) {
+		if !isLegalTagNameChar(nextChar) {
 			emitClosingTagName()
 			if err = l.UnreadRune(); err != nil {
 				l.Emit(LT_ERROR, err.Error(), l.line, l.column)

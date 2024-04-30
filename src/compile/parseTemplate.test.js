@@ -18,25 +18,33 @@ describe("parseTemplate", () => {
 
     const parsedTemplateData = await parseTemplate(templateSourceFilePath);
 
-    assert.deepStrictEqual(parsedTemplateData.toJson(), {
-      src: templateSourceFilePath,
+    assert.deepStrictEqual(parsedTemplateData, {
+      src: "/Users/ryangeyer/Projects/tempeh/test/fixtures/simpleComponent.tmph.html",
       nodes: [
         {
           tagName: "div",
-          childNodes: [
+          attributes: [
             {
-              textContent: "Hello, world!",
-              line: 1,
-              column: 6,
+              name: "data-this",
+              value: "attr_value_has_no_quotes",
+              l: 1,
+              c: 6,
             },
           ],
-          line: 1,
-          column: 1,
+          children: [
+            {
+              textContent: "Hello, world!",
+              l: 1,
+              c: 41,
+            },
+          ],
+          l: 1,
+          c: 2,
         },
         {
-          textContent: "Some root-level text ",
-          line: 2,
-          column: 1,
+          textContent: "\nSome root-level text\n",
+          l: 1,
+          c: 60,
         },
         {
           tagName: "button",
@@ -44,31 +52,33 @@ describe("parseTemplate", () => {
             {
               name: "role",
               value: "button",
-              line: 3,
-              column: 9,
+              l: 3,
+              c: 9,
             },
             {
               name: "aria-disabled",
-              line: 3,
-              column: 23,
+              value: "",
+              l: 3,
+              c: 23,
             },
             {
               name: "disabled",
-              line: 3,
-              column: 37,
+              value: "",
+              l: 3,
+              c: 37,
             },
             {
               name: "aria-label",
               value: "My custom label",
-              line: 3,
-              column: 46,
+              l: 3,
+              c: 46,
             },
           ],
-          childNodes: [
+          children: [
             {
-              textContent: "Click me ",
-              line: 3,
-              column: 75,
+              textContent: "\n  Click me\n  ",
+              l: 3,
+              c: 75,
             },
             {
               tagName: "svg",
@@ -76,112 +86,143 @@ describe("parseTemplate", () => {
                 {
                   name: "viewBox",
                   value: "0 0 100 100",
-                  line: 5,
-                  column: 8,
+                  l: 5,
+                  c: 8,
                 },
                 {
                   name: "xmlns",
                   value: "http://www.w3.org/2000/svg",
-                  line: 5,
-                  column: 30,
+                  l: 5,
+                  c: 30,
                 },
                 {
                   name: "aria-hidden",
-                  line: 5,
-                  column: 65,
+                  value: "",
+                  l: 5,
+                  c: 65,
                 },
               ],
-              childNodes: [
+              children: [
+                {
+                  textContent: "\n    ",
+                  l: 5,
+                  c: 77,
+                },
                 {
                   tagName: "circle",
                   attributes: [
                     {
                       name: "cx",
                       value: "50",
-                      line: 6,
-                      column: 13,
+                      l: 6,
+                      c: 13,
                     },
                     {
                       name: "cy",
                       value: "50",
-                      line: 6,
-                      column: 21,
+                      l: 6,
+                      c: 21,
                     },
                     {
                       name: "r",
                       value: "50",
-                      line: 6,
-                      column: 29,
+                      l: 6,
+                      c: 29,
                     },
                   ],
-                  line: 6,
-                  column: 5,
+                  l: 6,
+                  c: 6,
+                },
+                {
+                  textContent: "\n  ",
+                  l: 6,
+                  c: 45,
                 },
               ],
-              line: 5,
-              column: 3,
+              l: 5,
+              c: 4,
+            },
+            {
+              textContent: "\n",
+              l: 7,
+              c: 9,
             },
           ],
-          line: 3,
-          column: 1,
+          l: 3,
+          c: 2,
+        },
+        {
+          textContent: "\n",
+          l: 8,
+          c: 10,
         },
         {
           tagName: "p",
-          childNodes: [
+          children: [
             {
               textContent: "Spaces should ",
-              line: 9,
-              column: 4,
+              l: 9,
+              c: 4,
             },
             {
               tagName: "_",
-              childNodes: [
+              children: [
                 {
                   textContent: "be",
-                  line: 9,
-                  column: 21,
+                  l: 9,
+                  c: 21,
                 },
               ],
-              line: 9,
-              column: 18,
+              l: 9,
+              c: 19,
             },
             {
               textContent: " ",
-              line: 9,
-              column: 27,
+              l: 9,
+              c: 27,
             },
             {
               tagName: "em",
-              childNodes: [
+              children: [
                 {
                   textContent: "preserved",
-                  line: 9,
-                  column: 32,
+                  l: 9,
+                  c: 32,
                 },
               ],
-              line: 9,
-              column: 28,
+              l: 9,
+              c: 29,
             },
             {
-              textContent: " ",
-              line: 9,
-              column: 46,
+              textContent: "    ",
+              l: 9,
+              c: 46,
             },
             {
               tagName: "strong",
-              childNodes: [
+              children: [
                 {
-                  textContent: "but flattened",
-                  line: 9,
-                  column: 58,
+                  textContent: "between\n    tags\n  ",
+                  l: 9,
+                  c: 58,
                 },
               ],
-              line: 9,
-              column: 50,
+              l: 9,
+              c: 51,
+            },
+            {
+              textContent: "\n",
+              l: 11,
+              c: 12,
             },
           ],
-          line: 9,
-          column: 1,
+          l: 9,
+          c: 2,
+        },
+        {
+          textContent: "\n",
+          l: 12,
+          c: 5,
         },
       ],
     });
@@ -194,40 +235,60 @@ describe("parseTemplate", () => {
     );
     const parsedTemplateData = await parseTemplate(templateSourceFilePath);
 
-    assert.deepStrictEqual(parsedTemplateData.toJson(), {
-      src: templateSourceFilePath,
+    assert.deepStrictEqual(parsedTemplateData, {
+      src: "/Users/ryangeyer/Projects/tempeh/test/fixtures/inlineSubComponents.tmph.html",
       nodes: [
         {
           tagName: "ul",
-          childNodes: [
+          children: [
+            {
+              textContent: "\n  ",
+              l: 1,
+              c: 5,
+            },
             {
               tagName: "ListItem",
               attributes: [
                 {
                   name: "#for:item",
                   value: "items",
-                  line: 2,
-                  column: 13,
+                  l: 2,
+                  c: 13,
                 },
                 {
                   name: ":name",
                   value: "item.name",
-                  line: 2,
-                  column: 31,
+                  l: 2,
+                  c: 31,
                 },
                 {
                   name: "#text",
                   value: "item.value",
-                  line: 2,
-                  column: 49,
+                  l: 2,
+                  c: 49,
                 },
               ],
-              line: 2,
-              column: 3,
+              l: 2,
+              c: 4,
+            },
+            {
+              textContent: "\n",
+              l: 2,
+              c: 79,
             },
           ],
-          line: 1,
-          column: 1,
+          l: 1,
+          c: 2,
+        },
+        {
+          textContent: "\n",
+          l: 3,
+          c: 6,
+        },
+        {
+          textContent: "\n",
+          l: 4,
+          c: 40,
         },
         {
           tagName: "template",
@@ -235,49 +296,75 @@ describe("parseTemplate", () => {
             {
               name: "id",
               value: "ListItem",
-              line: 4,
-              column: 11,
+              l: 5,
+              c: 11,
             },
             {
               name: "#component",
-              line: 4,
-              column: 25,
+              value: "",
+              l: 5,
+              c: 25,
             },
           ],
-          childNodes: [
+          children: [
+            {
+              textContent: "\n  ",
+              l: 5,
+              c: 36,
+            },
             {
               tagName: "li",
-              childNodes: [
+              children: [
+                {
+                  textContent: "\n    ",
+                  l: 6,
+                  c: 7,
+                },
                 {
                   tagName: "strong",
                   attributes: [
                     {
                       name: "#text",
                       value: "`${name}:`",
-                      line: 6,
-                      column: 13,
+                      l: 7,
+                      c: 13,
                     },
                   ],
-                  line: 6,
-                  column: 5,
+                  l: 7,
+                  c: 6,
                 },
                 {
-                  textContent: " ",
-                  line: 7,
-                  column: 1,
+                  textContent: "\n    ",
+                  l: 7,
+                  c: 41,
                 },
                 {
                   tagName: "slot",
-                  line: 7,
-                  column: 5,
+                  l: 8,
+                  c: 6,
+                },
+                {
+                  textContent: "\n  ",
+                  l: 8,
+                  c: 18,
                 },
               ],
-              line: 5,
-              column: 3,
+              l: 6,
+              c: 4,
+            },
+            {
+              textContent: "\n",
+              l: 9,
+              c: 8,
             },
           ],
-          line: 4,
-          column: 1,
+          l: 5,
+          c: 2,
+        },
+        {
+          textContent: "\n",
+          l: 10,
+          c: 12,
         },
         {
           tagName: "template",
@@ -285,28 +372,39 @@ describe("parseTemplate", () => {
             {
               name: "id",
               value: "WhackyComponent",
-              line: 10,
-              column: 11,
+              l: 11,
+              c: 11,
             },
             {
               name: "#component",
-              line: 10,
-              column: 32,
+              value: "",
+              l: 11,
+              c: 32,
             },
           ],
-          childNodes: [
+          children: [
+            {
+              textContent: "\n  ",
+              l: 11,
+              c: 43,
+            },
             {
               tagName: "div",
-              childNodes: [
+              children: [
                 {
-                  tagName: "InnerComponent",
-                  line: 12,
-                  column: 5,
+                  textContent: "\n    ",
+                  l: 12,
+                  c: 8,
                 },
                 {
-                  textContent: " ",
-                  line: 13,
-                  column: 1,
+                  tagName: "InnerComponent",
+                  l: 13,
+                  c: 6,
+                },
+                {
+                  textContent: "\n    ",
+                  l: 13,
+                  c: 38,
                 },
                 {
                   tagName: "template",
@@ -314,50 +412,56 @@ describe("parseTemplate", () => {
                     {
                       name: "id",
                       value: "NestedComponent",
-                      line: 13,
-                      column: 15,
+                      l: 14,
+                      c: 15,
                     },
                     {
                       name: "#component",
-                      line: 13,
-                      column: 36,
+                      value: "",
+                      l: 14,
+                      c: 36,
                     },
                   ],
-                  childNodes: [
+                  children: [
+                    {
+                      textContent: "\n      ",
+                      l: 14,
+                      c: 47,
+                    },
                     {
                       tagName: "slot",
                       attributes: [
                         {
                           name: "name",
                           value: "before",
-                          line: 14,
-                          column: 13,
+                          l: 15,
+                          c: 13,
                         },
                       ],
-                      line: 14,
-                      column: 7,
+                      l: 15,
+                      c: 8,
                     },
                     {
-                      textContent: " ",
-                      line: 15,
-                      column: 1,
+                      textContent: "\n      ",
+                      l: 15,
+                      c: 34,
                     },
                     {
                       tagName: "div",
-                      childNodes: [
+                      children: [
                         {
                           textContent: "Why would you do this?!",
-                          line: 15,
-                          column: 12,
+                          l: 16,
+                          c: 12,
                         },
                       ],
-                      line: 15,
-                      column: 7,
+                      l: 16,
+                      c: 8,
                     },
                     {
-                      textContent: " ",
-                      line: 16,
-                      column: 1,
+                      textContent: "\n      ",
+                      l: 16,
+                      c: 41,
                     },
                     {
                       tagName: "slot",
@@ -365,24 +469,44 @@ describe("parseTemplate", () => {
                         {
                           name: "name",
                           value: "after",
-                          line: 16,
-                          column: 13,
+                          l: 17,
+                          c: 13,
                         },
                       ],
-                      line: 16,
-                      column: 7,
+                      l: 17,
+                      c: 8,
+                    },
+                    {
+                      textContent: "\n    ",
+                      l: 17,
+                      c: 33,
                     },
                   ],
-                  line: 13,
-                  column: 5,
+                  l: 14,
+                  c: 6,
+                },
+                {
+                  textContent: "\n  ",
+                  l: 18,
+                  c: 16,
                 },
               ],
-              line: 11,
-              column: 3,
+              l: 12,
+              c: 4,
+            },
+            {
+              textContent: "\n",
+              l: 19,
+              c: 9,
             },
           ],
-          line: 10,
-          column: 1,
+          l: 11,
+          c: 2,
+        },
+        {
+          textContent: "\n",
+          l: 20,
+          c: 12,
         },
       ],
     });
@@ -395,95 +519,127 @@ describe("parseTemplate", () => {
     );
     const parsedTemplateData = await parseTemplate(templateSourceFilePath);
 
-    assert.deepStrictEqual(parsedTemplateData.toJson(), {
-      src: templateSourceFilePath,
+    assert.deepStrictEqual(parsedTemplateData, {
+      src: "/Users/ryangeyer/Projects/tempeh/test/fixtures/componentWithStyles.tmph.html",
       nodes: [
         {
           tagName: "main",
-          childNodes: [
+          children: [
             {
-              tagName: "h1",
-              childNodes: [
-                {
-                  textContent: "Heading",
-                  line: 2,
-                  column: 7,
-                },
-              ],
-              line: 2,
-              column: 3,
+              textContent: "\n  ",
+              l: 1,
+              c: 7,
             },
             {
-              textContent: " ",
-              line: 3,
-              column: 1,
+              tagName: "h1",
+              children: [
+                {
+                  textContent: "Heading",
+                  l: 2,
+                  c: 7,
+                },
+              ],
+              l: 2,
+              c: 4,
+            },
+            {
+              textContent: "\n  ",
+              l: 2,
+              c: 19,
             },
             {
               tagName: "p",
-              childNodes: [
+              children: [
                 {
                   textContent: "Paragraph",
-                  line: 3,
-                  column: 6,
+                  l: 3,
+                  c: 6,
                 },
               ],
-              line: 3,
-              column: 3,
+              l: 3,
+              c: 4,
+            },
+            {
+              textContent: "\n",
+              l: 3,
+              c: 19,
             },
           ],
-          line: 1,
-          column: 1,
+          l: 1,
+          c: 2,
+        },
+        {
+          textContent: "\n",
+          l: 4,
+          c: 8,
         },
         {
           tagName: "style",
-          childNodes: [
+          children: [
             {
               textContent:
-                "@scope {\n    main {\n      font-size: 1.2em;\n    }\n\n    h1,\n    p {\n      margin: 0;\n    }\n  }",
-              line: 5,
-              column: 8,
+                "\n  @scope {\n    main {\n      font-size: 1.2em;\n    }\n\n    h1,\n    p {\n      margin: 0;\n    }\n  }\n",
+              l: 5,
+              c: 8,
             },
           ],
-          line: 5,
-          column: 1,
+          l: 5,
+          c: 2,
+        },
+        {
+          textContent: "\n",
+          l: 16,
+          c: 9,
         },
         {
           tagName: "style",
           attributes: [
             {
               name: "#bucket:global",
-              line: 17,
-              column: 8,
+              value: "",
+              l: 17,
+              c: 8,
             },
           ],
-          childNodes: [
+          children: [
             {
-              textContent: ":root {\n    --color: #333;\n  }",
-              line: 17,
-              column: 23,
+              textContent: "\n  :root {\n    --color: #333;\n  }\n",
+              l: 17,
+              c: 23,
             },
           ],
-          line: 17,
-          column: 1,
+          l: 17,
+          c: 2,
+        },
+        {
+          textContent: "\n",
+          l: 21,
+          c: 9,
         },
         {
           tagName: "style",
           attributes: [
             {
               name: "#raw",
-              line: 22,
-              column: 8,
+              value: "",
+              l: 22,
+              c: 8,
             },
           ],
-          childNodes: [
+          children: [
             {
-              textContent: "main {\n    color: red;\n  }",
-              line: 22,
-              column: 13,
+              textContent: "\n  main {\n    color: red;\n  }\n",
+              l: 22,
+              c: 13,
             },
           ],
-          line: 22,
-          column: 1,
+          l: 22,
+          c: 2,
+        },
+        {
+          textContent: "\n",
+          l: 26,
+          c: 9,
         },
       ],
     });
@@ -496,98 +652,126 @@ describe("parseTemplate", () => {
     );
     const parsedTemplateData = await parseTemplate(templateSourceFilePath);
 
-    assert.deepStrictEqual(parsedTemplateData.toJson(), {
-      src: templateSourceFilePath,
+    assert.deepStrictEqual(parsedTemplateData, {
+      src: "/Users/ryangeyer/Projects/tempeh/test/fixtures/componentWithScripts.tmph.html",
       nodes: [
         {
           tagName: "button",
-          childNodes: [
+          children: [
             {
               textContent: "Click me!",
-              line: 1,
-              column: 9,
+              l: 1,
+              c: 9,
             },
           ],
-          line: 1,
-          column: 1,
+          l: 1,
+          c: 2,
+        },
+        {
+          textContent: "\n",
+          l: 1,
+          c: 27,
         },
         {
           tagName: "script",
           attributes: [
             {
               name: "#scope:component",
-              line: 2,
-              column: 9,
+              value: "",
+              l: 2,
+              c: 9,
             },
           ],
-          childNodes: [
+          children: [
             {
               textContent:
-                "const observer = new IntersectionObserver((entries) => {\n    entries.forEach((entry) => {\n      if (entry.isIntersecting) {\n        entry.target.opacity = 1;\n      }\n    });\n  });",
-              line: 2,
-              column: 26,
+                "\n  const observer = new IntersectionObserver((entries) => {\n    entries.forEach((entry) => {\n      if (entry.isIntersecting) {\n        entry.target.opacity = 1;\n      }\n    });\n  });\n",
+              l: 2,
+              c: 26,
             },
           ],
-          line: 2,
-          column: 1,
+          l: 2,
+          c: 2,
+        },
+        {
+          textContent: "\n",
+          l: 10,
+          c: 10,
         },
         {
           tagName: "script",
           attributes: [
             {
               name: "#scope:instance",
-              line: 11,
-              column: 9,
+              value: "",
+              l: 11,
+              c: 9,
             },
           ],
-          childNodes: [
+          children: [
             {
               textContent:
-                'this.addEventListener("click", () => console.log("You clicked me!"));\n\n  observer.observe(this);',
-              line: 11,
-              column: 25,
+                '\n  this.addEventListener("click", () => console.log("You clicked me!"));\n\n  observer.observe(this);\n',
+              l: 11,
+              c: 25,
             },
           ],
-          line: 11,
-          column: 1,
+          l: 11,
+          c: 2,
+        },
+        {
+          textContent: "\n",
+          l: 15,
+          c: 10,
         },
         {
           tagName: "script",
-          childNodes: [
+          children: [
             {
-              textContent: 'console.log("This is a global script!");',
-              line: 16,
-              column: 9,
+              textContent: '\n  console.log("This is a global script!");\n',
+              l: 16,
+              c: 9,
             },
           ],
-          line: 16,
-          column: 1,
+          l: 16,
+          c: 2,
+        },
+        {
+          textContent: "\n",
+          l: 18,
+          c: 10,
         },
         {
           tagName: "script",
           attributes: [
             {
               name: "#render",
-              line: 19,
-              column: 9,
+              value: "",
+              l: 19,
+              c: 9,
             },
             {
               name: "#",
               value: "this is a comment!",
-              line: 19,
-              column: 17,
+              l: 19,
+              c: 17,
             },
           ],
-          childNodes: [
+          children: [
             {
               textContent:
-                "export const num = Math.random();\n  export function render() {\n    return `<button>Click me!</button>`;\n  }",
-              line: 19,
-              column: 40,
+                "\n  export const num = Math.random();\n  export function render() {\n    return `<button>\\`Click me!\\`</button>`;\n  }\n",
+              l: 19,
+              c: 40,
             },
           ],
-          line: 19,
-          column: 1,
+          l: 19,
+          c: 2,
+        },
+        {
+          textContent: "\n",
+          l: 24,
+          c: 10,
         },
         {
           tagName: "script",
@@ -595,19 +779,17 @@ describe("parseTemplate", () => {
             {
               name: "src",
               value: "./index.js",
-              line: 25,
-              column: 9,
+              l: 25,
+              c: 9,
             },
           ],
-          childNodes: [
-            {
-              textContent: "",
-              line: 25,
-              column: 26,
-            },
-          ],
-          line: 25,
-          column: 1,
+          l: 25,
+          c: 2,
+        },
+        {
+          textContent: "\n",
+          l: 25,
+          c: 35,
         },
       ],
     });
