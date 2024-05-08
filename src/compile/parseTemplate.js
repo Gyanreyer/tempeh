@@ -32,7 +32,7 @@ import { startTemplateParserServer } from "./templateParserServer.js";
 /**
  * @typedef TemplateDataAST
  * @property {string} src - Path to the parsed template file
- * @property {Readonly<Readonly<TmphNode>[]>} childNodes - The root nodes of the template
+ * @property {Readonly<Readonly<TmphNode>[]>} nodes - The root nodes of the template
  */
 
 /**
@@ -52,5 +52,12 @@ export async function parseTemplate(filePath) {
   requestURL.searchParams.set("path", filePath);
 
   // Freeze all content in the parsed template AST.
-  return deepFreeze(await fetch(requestURL).then((res) => res.json()));
+  return deepFreeze(
+    await fetch(requestURL)
+      .then((res) => res.json())
+      .then((nodes) => ({
+        src: filePath,
+        nodes,
+      }))
+  );
 }

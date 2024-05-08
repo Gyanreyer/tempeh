@@ -4,13 +4,34 @@ import (
 	"bufio"
 	"encoding/json"
 	"fmt"
+	"net/http"
 	"os"
 )
 
-func parseTemplateFile(templateFilePath string) (templateDataBytes []byte, err error) {
+func parseTemplateFile(templateFilePath string, responseWriter http.ResponseWriter) error {
+	responseController := http.NewResponseController(responseWriter)
+	jsonEncoder := json.NewEncoder(responseWriter)
+
+	// Write an opening bracket to indicate the start of the JSON array
+	fmt.Fprint(responseWriter, "[")
+
+	// Track whether we should add a comma before writing the next node to the response to keep the JSON array valid
+	shouldAddComma := false
+
+	var writeNodeToResponse = func(node *Node) error {
+		if shouldAddComma {
+			fmt.Fprint(responseWriter, ",")
+		} else {
+			shouldAddComma = true
+		}
+		jsonEncoder.Encode(node)
+		responseController.Flush()
+		return nil
+	}
+
 	file, err := os.Open(templateFilePath)
 	if err != nil {
-		return nil, err
+		return err
 	}
 
 	defer file.Close()
@@ -18,8 +39,6 @@ func parseTemplateFile(templateFilePath string) (templateDataBytes []byte, err e
 	lexer := NewLexer(bufio.NewReader(file))
 
 	go lexer.Run()
-
-	templateData := CreateTemplateData(templateFilePath)
 
 	// Track the current lowest-level leaf element node which we are parsing inside of.
 	// Any new text content or element nodes will be appended to this node.
@@ -37,11 +56,14 @@ func parseTemplateFile(templateFilePath string) (templateDataBytes []byte, err e
 				for openRootNode.Parent != nil {
 					openRootNode = openRootNode.Parent
 				}
-				templateData.AddNode(openRootNode)
+				err = writeNodeToResponse(openRootNode)
+				if err != nil {
+					return fmt.Errorf("tempeh template parser encountered fatal error: '%s' at %s:%d:%d", err.Error(), templateFilePath, token.line, token.column)
+				}
 			}
 			break
 		} else if token.tokenType == LT_ERROR {
-			return nil, fmt.Errorf("tempeh template parser encountered fatal error: '%s' at %s:%d:%d", token.tokenValue, templateFilePath, token.line, token.column)
+			return fmt.Errorf("tempeh template parser encountered fatal error: '%s' at %s:%d:%d", token.tokenValue, templateFilePath, token.line, token.column)
 		}
 
 		switch token.tokenType {
@@ -57,7 +79,10 @@ func parseTemplateFile(templateFilePath string) (templateDataBytes []byte, err e
 				currentOpenLeafElementNode.AddChild(textNode)
 			} else {
 				// Append to the root if there's no parent node
-				templateData.AddNode(textNode)
+				err = writeNodeToResponse(textNode)
+				if err != nil {
+					return fmt.Errorf("tempeh template parser encountered fatal error: '%s' at %s:%d:%d", err.Error(), templateFilePath, token.line, token.column)
+				}
 			}
 		case LT_OPENINGTAGNAME:
 			elementNode := CreateElementNode(token.tokenValue, token.line, token.column)
@@ -78,7 +103,7 @@ func parseTemplateFile(templateFilePath string) (templateDataBytes []byte, err e
 
 			err = currentOpenLeafElementNode.UpdateLatestAttributeValue(token.tokenValue)
 			if err != nil {
-				return nil, fmt.Errorf("tempeh template parser encountered fatal error: '%s' at %s:%d:%d", err.Error(), templateFilePath, token.line, token.column)
+				return fmt.Errorf("tempeh template parser encountered fatal error: '%s' at %s:%d:%d", err.Error(), templateFilePath, token.line, token.column)
 			}
 		case LT_SELFCLOSINGTAGEND:
 			if currentOpenLeafElementNode == nil {
@@ -88,8 +113,11 @@ func parseTemplateFile(templateFilePath string) (templateDataBytes []byte, err e
 			if currentOpenLeafElementNode.Parent != nil {
 				currentOpenLeafElementNode = currentOpenLeafElementNode.Parent
 			} else {
-				templateData.AddNode(currentOpenLeafElementNode)
+				err = writeNodeToResponse(currentOpenLeafElementNode)
 				currentOpenLeafElementNode = nil
+				if err != nil {
+					return fmt.Errorf("tempeh template parser encountered fatal error: '%s' at %s:%d:%d", err.Error(), templateFilePath, token.line, token.column)
+				}
 			}
 		case LT_CLOSINGTAGNAME:
 			if currentOpenLeafElementNode == nil {
@@ -105,23 +133,23 @@ func parseTemplateFile(templateFilePath string) (templateDataBytes []byte, err e
 			}
 
 			if closedNode == nil {
-				return nil, fmt.Errorf("tempeh template parser encountered fatal error: unexpected closing tag '%s' at %s:%d:%d", closedTagName, templateFilePath, token.line, token.column)
+				return fmt.Errorf("tempeh template parser encountered fatal error: unexpected closing tag '%s' at %s:%d:%d", closedTagName, templateFilePath, token.line, token.column)
 			}
 
 			if closedNode.Parent != nil {
 				currentOpenLeafElementNode = closedNode.Parent
 			} else {
-				templateData.AddNode(closedNode)
+				err = writeNodeToResponse(closedNode)
 				currentOpenLeafElementNode = nil
+				if err != nil {
+					return fmt.Errorf("tempeh template parser encountered fatal error: '%s' at %s:%d:%d", err.Error(), templateFilePath, token.line, token.column)
+				}
 			}
 		}
 	}
 
-	templateDataBytes, err = json.Marshal(templateData)
+	// Write a closing bracket to indicate the end of the JSON array
+	fmt.Fprint(responseWriter, "]")
 
-	if err != nil {
-		return nil, err
-	}
-
-	return templateDataBytes, nil
+	return nil
 }

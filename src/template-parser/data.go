@@ -59,19 +59,3 @@ func CreateTextNode(textContent string, line, col int) *Node {
 		TextContent: textContent,
 	}
 }
-
-type TemplateData struct {
-	Src   string  `json:"src"`
-	Nodes []*Node `json:"nodes"`
-}
-
-func (td *TemplateData) AddNode(node *Node) {
-	td.Nodes = append(td.Nodes, node)
-}
-
-func CreateTemplateData(src string) TemplateData {
-	return TemplateData{
-		Src:   src,
-		Nodes: []*Node{},
-	}
-}

@@ -14,14 +14,12 @@ func main() {
 		panic(err)
 	}
 
-	http.HandleFunc("/parse", func(w http.ResponseWriter, r *http.Request) {
-		parsedTemplateDataBytes, err := parseTemplateFile(r.URL.Query().Get("path"))
+	http.HandleFunc("/parse", func(responseWriter http.ResponseWriter, r *http.Request) {
+		err := parseTemplateFile(r.URL.Query().Get("path"), responseWriter)
 		if err != nil {
-			w.WriteHeader(http.StatusInternalServerError)
-			w.Write([]byte(err.Error()))
+			responseWriter.WriteHeader(http.StatusInternalServerError)
 		} else {
-			w.WriteHeader(http.StatusOK)
-			w.Write(parsedTemplateDataBytes)
+			responseWriter.WriteHeader(http.StatusOK)
 		}
 	})
 
