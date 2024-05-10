@@ -2,6 +2,7 @@ package main
 
 import (
 	"bufio"
+	"bytes"
 	"encoding/json"
 	"fmt"
 	"net/http"
@@ -10,23 +11,57 @@ import (
 
 func parseTemplateFile(templateFilePath string, responseWriter http.ResponseWriter) error {
 	responseController := http.NewResponseController(responseWriter)
-	jsonEncoder := json.NewEncoder(responseWriter)
-
-	// Write an opening bracket to indicate the start of the JSON array
-	fmt.Fprint(responseWriter, "[")
 
 	// Track whether we should add a comma before writing the next node to the response to keep the JSON array valid
 	shouldAddComma := false
 
+	buf := new(bytes.Buffer)
+
 	var writeNodeToResponse = func(node *Node) error {
+		// Clear the buffer once we're done writing
+		defer buf.Reset()
+
 		if shouldAddComma {
-			fmt.Fprint(responseWriter, ",")
+			if _, err := buf.WriteRune(','); err != nil {
+				return err
+			}
 		} else {
 			shouldAddComma = true
 		}
-		jsonEncoder.Encode(node)
-		responseController.Flush()
+		jsonBytes, err := json.Marshal(node)
+		if err != nil {
+			return err
+		}
+		if _, err := buf.Write(jsonBytes); err != nil {
+			return err
+		}
+		if _, err := buf.WriteTo(responseWriter); err != nil {
+			return err
+		}
+		if err := responseController.Flush(); err != nil {
+			return err
+		}
 		return nil
+	}
+
+	var writeRuneToResponse = func(r rune) error {
+		defer buf.Reset()
+
+		if _, err := buf.WriteRune(r); err != nil {
+			return err
+		}
+		if _, err := buf.WriteTo(responseWriter); err != nil {
+			return err
+		}
+		if err := responseController.Flush(); err != nil {
+			return err
+		}
+		return nil
+	}
+
+	// Write an opening bracket to indicate the start of the JSON array
+	if err := writeRuneToResponse('['); err != nil {
+		return err
 	}
 
 	file, err := os.Open(templateFilePath)
@@ -149,7 +184,9 @@ func parseTemplateFile(templateFilePath string, responseWriter http.ResponseWrit
 	}
 
 	// Write a closing bracket to indicate the end of the JSON array
-	fmt.Fprint(responseWriter, "]")
+	if err := writeRuneToResponse(']'); err != nil {
+		return err
+	}
 
 	return nil
 }
