@@ -9,8 +9,15 @@ import (
 	"os"
 )
 
-func parseTemplateFile(templateFilePath string, responseWriter http.ResponseWriter) error {
-	responseController := http.NewResponseController(responseWriter)
+func parseTemplateFile(templateFilePath string, responseWriter *http.ResponseWriter) error {
+	file, err := os.Open(templateFilePath)
+	if err != nil {
+		return err
+	}
+
+	defer file.Close()
+
+	responseController := http.NewResponseController(*responseWriter)
 
 	// Track whether we should add a comma before writing the next node to the response to keep the JSON array valid
 	shouldAddComma := false
@@ -35,7 +42,7 @@ func parseTemplateFile(templateFilePath string, responseWriter http.ResponseWrit
 		if _, err := buf.Write(jsonBytes); err != nil {
 			return err
 		}
-		if _, err := buf.WriteTo(responseWriter); err != nil {
+		if _, err := buf.WriteTo(*responseWriter); err != nil {
 			return err
 		}
 		if err := responseController.Flush(); err != nil {
@@ -50,7 +57,7 @@ func parseTemplateFile(templateFilePath string, responseWriter http.ResponseWrit
 		if _, err := buf.WriteRune(r); err != nil {
 			return err
 		}
-		if _, err := buf.WriteTo(responseWriter); err != nil {
+		if _, err := buf.WriteTo(*responseWriter); err != nil {
 			return err
 		}
 		if err := responseController.Flush(); err != nil {
@@ -63,13 +70,6 @@ func parseTemplateFile(templateFilePath string, responseWriter http.ResponseWrit
 	if err := writeRuneToResponse('['); err != nil {
 		return err
 	}
-
-	file, err := os.Open(templateFilePath)
-	if err != nil {
-		return err
-	}
-
-	defer file.Close()
 
 	lexer := NewLexer(bufio.NewReader(file))
 
