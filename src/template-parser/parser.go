@@ -4,9 +4,10 @@ import (
 	"bufio"
 	"bytes"
 	"encoding/json"
-	"fmt"
+	"errors"
 	"net/http"
 	"os"
+	"strconv"
 )
 
 func parseTemplateFile(templateFilePath string, responseWriter *http.ResponseWriter) error {
@@ -35,11 +36,11 @@ func parseTemplateFile(templateFilePath string, responseWriter *http.ResponseWri
 		} else {
 			shouldAddComma = true
 		}
-		jsonBytes, err := json.Marshal(node)
-		if err != nil {
+		var jsonBytes []byte
+		if jsonBytes, err = json.Marshal(node); err != nil {
 			return err
 		}
-		if _, err := buf.Write(jsonBytes); err != nil {
+		if _, err = buf.Write(jsonBytes); err != nil {
 			return err
 		}
 		if _, err := buf.WriteTo(*responseWriter); err != nil {
@@ -84,6 +85,10 @@ func parseTemplateFile(templateFilePath string, responseWriter *http.ResponseWri
 	for {
 		token := lexer.NextToken()
 
+		var makeParsingError = func(message string) error {
+			return errors.New(templateFilePath + ":" + strconv.Itoa(token.line) + ":" + strconv.Itoa(token.column) + " - tempeh template parser encountered fatal error: '" + message + "'")
+		}
+
 		if token.tokenType == LT_EOF {
 			if currentOpenLeafElementNode != nil {
 				// If there are unclosed nodes, traverse up to the root node and append it to the template data
@@ -93,12 +98,12 @@ func parseTemplateFile(templateFilePath string, responseWriter *http.ResponseWri
 				}
 				err = writeNodeToResponse(openRootNode)
 				if err != nil {
-					return fmt.Errorf("tempeh template parser encountered fatal error: '%s' at %s:%d:%d", err.Error(), templateFilePath, token.line, token.column)
+					return makeParsingError(err.Error())
 				}
 			}
 			break
 		} else if token.tokenType == LT_ERROR {
-			return fmt.Errorf("tempeh template parser encountered fatal error: '%s' at %s:%d:%d", token.tokenValue, templateFilePath, token.line, token.column)
+			return makeParsingError(token.tokenValue)
 		}
 
 		switch token.tokenType {
@@ -116,7 +121,7 @@ func parseTemplateFile(templateFilePath string, responseWriter *http.ResponseWri
 				// Append to the root if there's no parent node
 				err = writeNodeToResponse(textNode)
 				if err != nil {
-					return fmt.Errorf("tempeh template parser encountered fatal error: '%s' at %s:%d:%d", err.Error(), templateFilePath, token.line, token.column)
+					return makeParsingError(err.Error())
 				}
 			}
 		case LT_OPENINGTAGNAME:
@@ -138,7 +143,7 @@ func parseTemplateFile(templateFilePath string, responseWriter *http.ResponseWri
 
 			err = currentOpenLeafElementNode.UpdateLatestAttributeValue(token.tokenValue)
 			if err != nil {
-				return fmt.Errorf("tempeh template parser encountered fatal error: '%s' at %s:%d:%d", err.Error(), templateFilePath, token.line, token.column)
+				return makeParsingError(err.Error())
 			}
 		case LT_SELFCLOSINGTAGEND:
 			if currentOpenLeafElementNode == nil {
@@ -151,7 +156,7 @@ func parseTemplateFile(templateFilePath string, responseWriter *http.ResponseWri
 				err = writeNodeToResponse(currentOpenLeafElementNode)
 				currentOpenLeafElementNode = nil
 				if err != nil {
-					return fmt.Errorf("tempeh template parser encountered fatal error: '%s' at %s:%d:%d", err.Error(), templateFilePath, token.line, token.column)
+					return makeParsingError(err.Error())
 				}
 			}
 		case LT_CLOSINGTAGNAME:
@@ -168,7 +173,7 @@ func parseTemplateFile(templateFilePath string, responseWriter *http.ResponseWri
 			}
 
 			if closedNode == nil {
-				return fmt.Errorf("tempeh template parser encountered fatal error: unexpected closing tag '%s' at %s:%d:%d", closedTagName, templateFilePath, token.line, token.column)
+				return makeParsingError("unexpected closing tag '" + closedTagName + "'")
 			}
 
 			if closedNode.Parent != nil {
@@ -177,7 +182,7 @@ func parseTemplateFile(templateFilePath string, responseWriter *http.ResponseWri
 				err = writeNodeToResponse(closedNode)
 				currentOpenLeafElementNode = nil
 				if err != nil {
-					return fmt.Errorf("tempeh template parser encountered fatal error: '%s' at %s:%d:%d", err.Error(), templateFilePath, token.line, token.column)
+					return makeParsingError(err.Error())
 				}
 			}
 		}

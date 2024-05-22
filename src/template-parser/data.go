@@ -1,6 +1,6 @@
 package main
 
-import "fmt"
+import "errors"
 
 type Attribute struct {
 	Name  string `json:"name"`
@@ -36,7 +36,7 @@ func (n *Node) AddAttribute(name string, line, col int) {
 func (n *Node) UpdateLatestAttributeValue(attrValue string) error {
 	attrCount := len(n.Attributes)
 	if attrCount == 0 {
-		return fmt.Errorf("no attributes found to set value '%s' on", attrValue)
+		return errors.New("no attributes found to set value '" + attrValue + "' on")
 	}
 
 	n.Attributes[attrCount-1].Value = attrValue

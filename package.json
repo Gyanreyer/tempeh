@@ -1,14 +1,16 @@
 {
+  "name": "tempeh",
   "type": "module",
   "dependencies": {
     "@minify-html/node": "^0.11.1",
+    "@types/node": "^20.12.12",
     "astring": "^1.8.6",
     "esbuild": "^0.19.5",
     "lightningcss": "^1.22.0",
     "marked": "^9.1.2"
   },
   "scripts": {
-    "build-template-parser": "go build -C ./src/template-parser -o ../../bin/parse-template",
+    "build-template-parser": "go build -C ./src/template-parser -o ../../bin/parse-template -ldflags '-s -w'",
     "test": "node --test"
   },
   "devDependencies": {

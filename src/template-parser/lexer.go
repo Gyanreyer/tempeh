@@ -2,7 +2,6 @@ package main
 
 import (
 	"bufio"
-	"fmt"
 	"io"
 )
 
@@ -26,28 +25,28 @@ type LexerToken struct {
 	column     int
 }
 
-func (lt *LexerToken) String() string {
-	var typeString string
-	switch lt.tokenType {
-	case LT_EOF:
-		typeString = "EOF"
-	case LT_ERROR:
-		typeString = "ERROR"
-	case LT_TEXTCONTENT:
-		typeString = "TEXTCONTENT"
-	case LT_OPENINGTAGNAME:
-		typeString = "OPENINGTAGNAME"
-	case LT_ATTRIBUTENAME:
-		typeString = "ATTRIBUTENAME"
-	case LT_ATTRIBUTEVALUE:
-		typeString = "ATTRIBUTEVALUE"
-	case LT_SELFCLOSINGTAGEND:
-		typeString = "SELFCLOSINGTAGEND"
-	case LT_CLOSINGTAGNAME:
-		typeString = "CLOSINGTAGNAME"
-	}
-	return fmt.Sprintf("Type %s: '%s'\n", typeString, lt.tokenValue)
-}
+// func (lt *LexerToken) String() string {
+// 	var typeString string
+// 	switch lt.tokenType {
+// 	case LT_EOF:
+// 		typeString = "EOF"
+// 	case LT_ERROR:
+// 		typeString = "ERROR"
+// 	case LT_TEXTCONTENT:
+// 		typeString = "TEXTCONTENT"
+// 	case LT_OPENINGTAGNAME:
+// 		typeString = "OPENINGTAGNAME"
+// 	case LT_ATTRIBUTENAME:
+// 		typeString = "ATTRIBUTENAME"
+// 	case LT_ATTRIBUTEVALUE:
+// 		typeString = "ATTRIBUTEVALUE"
+// 	case LT_SELFCLOSINGTAGEND:
+// 		typeString = "SELFCLOSINGTAGEND"
+// 	case LT_CLOSINGTAGNAME:
+// 		typeString = "CLOSINGTAGNAME"
+// 	}
+// 	return fmt.Sprintf("Type %s: '%s'\n", typeString, lt.tokenValue)
+// }
 
 type Lexer struct {
 	reader      *bufio.Reader
