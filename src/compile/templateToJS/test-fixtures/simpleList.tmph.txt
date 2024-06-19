@@ -1,0 +1,24 @@
+import {TmphHTML, html, escapeText} from "tempeh/render";
+
+/**
+ * @typedef {Object} Props
+ * @property {string[]} items
+ */
+
+export default class SimpleList {
+  /**
+   * @param {Object} renderConfig
+   * @param {Props} renderConfig.props
+   *
+   * @returns {TmphHTML}
+   */
+  render({ props }) {
+    return html`<ul>
+      ${(function* () {
+        for (const item of props.items) {
+          yield html`<li>${escapeText(item)}</li>`;
+        }
+      })()}
+    </ul>`;
+  },
+};

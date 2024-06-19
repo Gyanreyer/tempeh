@@ -1,0 +1,19 @@
+import {TmphHTML, html} from "tempeh/render";
+
+import Layout from "./layout.tmph.js";
+import SimpleList from "./simpleList.tmph.js";
+
+export default class ComponentWithImports {
+  /**
+   * @returns {TmphHTML}
+   */
+  render() {
+    return html`
+      ${Layout.render({
+        slot: html`<main>
+          ${SimpleList.render({ props: { items: ["a", "b", "c"] } })}
+        </main>`,
+      })}
+    `;
+  },
+};

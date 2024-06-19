@@ -1,0 +1,9 @@
+<script #setup>
+  /**
+   * @typedef {Object} Props
+   * @property {string[]} items
+   */
+</script>
+<ul>
+  <li #for-of:item="props.items" #text="item"></li>
+</ul>

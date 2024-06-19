@@ -7,7 +7,8 @@
     "astring": "^1.8.6",
     "esbuild": "^0.19.5",
     "lightningcss": "^1.22.0",
-    "marked": "^9.1.2"
+    "marked": "^9.1.2",
+    "typescript": "^5.5.1-rc"
   },
   "scripts": {
     "build-template-parser": "go build -C ./src/template-parser -o ../../bin/parse-template -ldflags '-s -w'",

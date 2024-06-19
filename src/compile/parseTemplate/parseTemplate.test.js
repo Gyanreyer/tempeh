@@ -801,4 +801,134 @@ describe("parseTemplate", () => {
       ],
     });
   });
+
+  test("should parse a layout component file", async () => {
+    const templateSourceFilePath = resolveRelativePath(
+      "../../../test/fixtures/layout.tmph.html",
+      import.meta
+    );
+    const parsedTemplateData = await parseTemplate(templateSourceFilePath);
+
+    assert.deepStrictEqual(parsedTemplateData, {
+      src: "/Users/ryangeyer/Projects/tempeh/test/fixtures/layout.tmph.html",
+      nodes: [
+        {
+          textContent: "<!DOCTYPE html>\n",
+          l: 1,
+          c: 1,
+        },
+        {
+          tagName: "html",
+          attributes: [
+            {
+              name: "lang",
+              value: "en",
+              l: 2,
+              c: 7,
+            },
+          ],
+          children: [
+            {
+              textContent: "\n  ",
+              l: 2,
+              c: 17,
+            },
+            {
+              tagName: "head",
+              children: [
+                {
+                  textContent: "\n    ",
+                  l: 3,
+                  c: 9,
+                },
+                {
+                  tagName: "meta",
+                  attributes: [
+                    {
+                      name: "charset",
+                      value: "UTF-8",
+                      l: 4,
+                      c: 11,
+                    },
+                  ],
+                  l: 4,
+                  c: 6,
+                },
+                {
+                  textContent: "\n    ",
+                  l: 4,
+                  c: 29,
+                },
+                {
+                  tagName: "meta",
+                  attributes: [
+                    {
+                      name: "name",
+                      value: "viewport",
+                      l: 5,
+                      c: 11,
+                    },
+                    {
+                      name: "content",
+                      value: "width=device-width",
+                      l: 5,
+                      c: 27,
+                    },
+                  ],
+                  l: 5,
+                  c: 6,
+                },
+                {
+                  textContent: "\n  ",
+                  l: 5,
+                  c: 58,
+                },
+              ],
+              l: 3,
+              c: 4,
+            },
+            {
+              textContent: "\n  ",
+              l: 6,
+              c: 10,
+            },
+            {
+              tagName: "body",
+              children: [
+                {
+                  textContent: "\n    ",
+                  l: 7,
+                  c: 9,
+                },
+                {
+                  tagName: "slot",
+                  l: 8,
+                  c: 6,
+                },
+                {
+                  textContent: "\n  ",
+                  l: 8,
+                  c: 18,
+                },
+              ],
+              l: 7,
+              c: 4,
+            },
+            {
+              textContent: "\n",
+              l: 9,
+              c: 10,
+            },
+          ],
+          l: 2,
+          c: 2,
+        },
+        {
+          textContent: "\n",
+          l: 10,
+          c: 8,
+        },
+      ],
+    });
+  });
 });
