@@ -7,6 +7,11 @@ import {
   startTemplateParserServer,
   stopTemplateParserServer,
 } from "./templateParserServer.js";
+import { writeFile, writeFileSync } from "node:fs";
+
+/**
+ * @typedef {import("./parseTemplate.js").TemplateDataAST} TemplateDataAST
+ */
 
 describe("parseTemplate", () => {
   before(async () => {
@@ -25,214 +30,217 @@ describe("parseTemplate", () => {
 
     const parsedTemplateData = await parseTemplate(templateSourceFilePath);
 
-    assert.deepStrictEqual(parsedTemplateData, {
-      src: "/Users/ryangeyer/Projects/tempeh/test/fixtures/simpleComponent.tmph.html",
-      nodes: [
-        {
-          tagName: "div",
-          attributes: [
-            {
-              name: "data-this",
-              value: "attr_value_has_no_quotes",
-              l: 1,
-              c: 6,
-            },
-          ],
-          children: [
-            {
-              textContent: "Hello, world!",
-              l: 1,
-              c: 41,
-            },
-          ],
-          l: 1,
-          c: 2,
-        },
-        {
-          textContent: "\nSome root-level text\n",
-          l: 1,
-          c: 60,
-        },
-        {
-          tagName: "button",
-          attributes: [
-            {
-              name: "role",
-              value: "button",
-              l: 3,
-              c: 9,
-            },
-            {
-              name: "aria-disabled",
-              value: "",
-              l: 3,
-              c: 23,
-            },
-            {
-              name: "disabled",
-              value: "",
-              l: 3,
-              c: 37,
-            },
-            {
-              name: "aria-label",
-              value: "My custom label",
-              l: 3,
-              c: 46,
-            },
-          ],
-          children: [
-            {
-              textContent: "\n  Click me\n  ",
-              l: 3,
-              c: 75,
-            },
-            {
-              tagName: "svg",
-              attributes: [
-                {
-                  name: "viewBox",
-                  value: "0 0 100 100",
-                  l: 5,
-                  c: 8,
-                },
-                {
-                  name: "xmlns",
-                  value: "http://www.w3.org/2000/svg",
-                  l: 5,
-                  c: 30,
-                },
-                {
-                  name: "aria-hidden",
-                  value: "",
-                  l: 5,
-                  c: 65,
-                },
-              ],
-              children: [
-                {
-                  textContent: "\n    ",
-                  l: 5,
-                  c: 77,
-                },
-                {
-                  tagName: "circle",
-                  attributes: [
-                    {
-                      name: "cx",
-                      value: "50",
-                      l: 6,
-                      c: 13,
-                    },
-                    {
-                      name: "cy",
-                      value: "50",
-                      l: 6,
-                      c: 21,
-                    },
-                    {
-                      name: "r",
-                      value: "50",
-                      l: 6,
-                      c: 29,
-                    },
-                  ],
-                  l: 6,
-                  c: 6,
-                },
-                {
-                  textContent: "\n  ",
-                  l: 6,
-                  c: 45,
-                },
-              ],
-              l: 5,
-              c: 4,
-            },
-            {
-              textContent: "\n",
-              l: 7,
-              c: 9,
-            },
-          ],
-          l: 3,
-          c: 2,
-        },
-        {
-          textContent: "\n",
-          l: 8,
-          c: 10,
-        },
-        {
-          tagName: "p",
-          children: [
-            {
-              textContent: "Spaces should ",
-              l: 9,
-              c: 4,
-            },
-            {
-              tagName: "_",
-              children: [
-                {
-                  textContent: "be",
-                  l: 9,
-                  c: 21,
-                },
-              ],
-              l: 9,
-              c: 19,
-            },
-            {
-              textContent: " ",
-              l: 9,
-              c: 27,
-            },
-            {
-              tagName: "em",
-              children: [
-                {
-                  textContent: "preserved",
-                  l: 9,
-                  c: 32,
-                },
-              ],
-              l: 9,
-              c: 29,
-            },
-            {
-              textContent: "    ",
-              l: 9,
-              c: 46,
-            },
-            {
-              tagName: "strong",
-              children: [
-                {
-                  textContent: "between\n    tags\n  ",
-                  l: 9,
-                  c: 58,
-                },
-              ],
-              l: 9,
-              c: 51,
-            },
-            {
-              textContent: "\n",
-              l: 11,
-              c: 12,
-            },
-          ],
-          l: 9,
-          c: 2,
-        },
-        {
-          textContent: "\n",
-          l: 12,
-          c: 5,
-        },
-      ],
-    });
+    assert.deepStrictEqual(
+      parsedTemplateData,
+      /** @satisfies {TemplateDataAST} */ ({
+        src: "/Users/ryangeyer/Projects/tempeh/test/fixtures/simpleComponent.tmph.html",
+        nodes: [
+          {
+            tagName: "div",
+            attributes: [
+              {
+                name: "data-this",
+                value: "attr_value_has_no_quotes",
+                l: 1,
+                c: 6,
+              },
+            ],
+            children: [
+              {
+                textContent: "Hello, world!",
+                l: 1,
+                c: 41,
+              },
+            ],
+            l: 1,
+            c: 2,
+          },
+          {
+            textContent: "\nSome root-level text\n",
+            l: 1,
+            c: 60,
+          },
+          {
+            tagName: "button",
+            attributes: [
+              {
+                name: "role",
+                value: "button",
+                l: 3,
+                c: 9,
+              },
+              {
+                name: "aria-disabled",
+                value: "",
+                l: 3,
+                c: 23,
+              },
+              {
+                name: "disabled",
+                value: "",
+                l: 3,
+                c: 37,
+              },
+              {
+                name: "aria-label",
+                value: "My custom label",
+                l: 3,
+                c: 46,
+              },
+            ],
+            children: [
+              {
+                textContent: "\n  Click me\n  ",
+                l: 3,
+                c: 75,
+              },
+              {
+                tagName: "svg",
+                attributes: [
+                  {
+                    name: "viewBox",
+                    value: "0 0 100 100",
+                    l: 5,
+                    c: 8,
+                  },
+                  {
+                    name: "xmlns",
+                    value: "http://www.w3.org/2000/svg",
+                    l: 5,
+                    c: 30,
+                  },
+                  {
+                    name: "aria-hidden",
+                    value: "",
+                    l: 5,
+                    c: 65,
+                  },
+                ],
+                children: [
+                  {
+                    textContent: "\n    ",
+                    l: 5,
+                    c: 77,
+                  },
+                  {
+                    tagName: "circle",
+                    attributes: [
+                      {
+                        name: "cx",
+                        value: "50",
+                        l: 6,
+                        c: 13,
+                      },
+                      {
+                        name: "cy",
+                        value: "50",
+                        l: 6,
+                        c: 21,
+                      },
+                      {
+                        name: "r",
+                        value: "50",
+                        l: 6,
+                        c: 29,
+                      },
+                    ],
+                    l: 6,
+                    c: 6,
+                  },
+                  {
+                    textContent: "\n  ",
+                    l: 6,
+                    c: 45,
+                  },
+                ],
+                l: 5,
+                c: 4,
+              },
+              {
+                textContent: "\n",
+                l: 7,
+                c: 9,
+              },
+            ],
+            l: 3,
+            c: 2,
+          },
+          {
+            textContent: "\n",
+            l: 8,
+            c: 10,
+          },
+          {
+            tagName: "p",
+            children: [
+              {
+                textContent: "Spaces should ",
+                l: 9,
+                c: 4,
+              },
+              {
+                tagName: "_",
+                children: [
+                  {
+                    textContent: "be",
+                    l: 9,
+                    c: 21,
+                  },
+                ],
+                l: 9,
+                c: 19,
+              },
+              {
+                textContent: " ",
+                l: 9,
+                c: 27,
+              },
+              {
+                tagName: "em",
+                children: [
+                  {
+                    textContent: "preserved",
+                    l: 9,
+                    c: 32,
+                  },
+                ],
+                l: 9,
+                c: 29,
+              },
+              {
+                textContent: "    ",
+                l: 9,
+                c: 46,
+              },
+              {
+                tagName: "strong",
+                children: [
+                  {
+                    textContent: "between\n    tags\n  ",
+                    l: 9,
+                    c: 58,
+                  },
+                ],
+                l: 9,
+                c: 51,
+              },
+              {
+                textContent: "\n",
+                l: 11,
+                c: 12,
+              },
+            ],
+            l: 9,
+            c: 2,
+          },
+          {
+            textContent: "\n",
+            l: 12,
+            c: 5,
+          },
+        ],
+      })
+    );
   });
 
   test("should parse a component file with inline sub-components", async () => {
@@ -241,6 +249,11 @@ describe("parseTemplate", () => {
       import.meta
     );
     const parsedTemplateData = await parseTemplate(templateSourceFilePath);
+
+    writeFileSync(
+      "parsedTemplateData.json",
+      JSON.stringify(parsedTemplateData, null, 2)
+    );
 
     assert.deepStrictEqual(parsedTemplateData, {
       src: "/Users/ryangeyer/Projects/tempeh/test/fixtures/inlineSubComponents.tmph.html",
@@ -809,126 +822,129 @@ describe("parseTemplate", () => {
     );
     const parsedTemplateData = await parseTemplate(templateSourceFilePath);
 
-    assert.deepStrictEqual(parsedTemplateData, {
-      src: "/Users/ryangeyer/Projects/tempeh/test/fixtures/layout.tmph.html",
-      nodes: [
-        {
-          textContent: "<!DOCTYPE html>\n",
-          l: 1,
-          c: 1,
-        },
-        {
-          tagName: "html",
-          attributes: [
-            {
-              name: "lang",
-              value: "en",
-              l: 2,
-              c: 7,
-            },
-          ],
-          children: [
-            {
-              textContent: "\n  ",
-              l: 2,
-              c: 17,
-            },
-            {
-              tagName: "head",
-              children: [
-                {
-                  textContent: "\n    ",
-                  l: 3,
-                  c: 9,
-                },
-                {
-                  tagName: "meta",
-                  attributes: [
-                    {
-                      name: "charset",
-                      value: "UTF-8",
-                      l: 4,
-                      c: 11,
-                    },
-                  ],
-                  l: 4,
-                  c: 6,
-                },
-                {
-                  textContent: "\n    ",
-                  l: 4,
-                  c: 29,
-                },
-                {
-                  tagName: "meta",
-                  attributes: [
-                    {
-                      name: "name",
-                      value: "viewport",
-                      l: 5,
-                      c: 11,
-                    },
-                    {
-                      name: "content",
-                      value: "width=device-width",
-                      l: 5,
-                      c: 27,
-                    },
-                  ],
-                  l: 5,
-                  c: 6,
-                },
-                {
-                  textContent: "\n  ",
-                  l: 5,
-                  c: 58,
-                },
-              ],
-              l: 3,
-              c: 4,
-            },
-            {
-              textContent: "\n  ",
-              l: 6,
-              c: 10,
-            },
-            {
-              tagName: "body",
-              children: [
-                {
-                  textContent: "\n    ",
-                  l: 7,
-                  c: 9,
-                },
-                {
-                  tagName: "slot",
-                  l: 8,
-                  c: 6,
-                },
-                {
-                  textContent: "\n  ",
-                  l: 8,
-                  c: 18,
-                },
-              ],
-              l: 7,
-              c: 4,
-            },
-            {
-              textContent: "\n",
-              l: 9,
-              c: 10,
-            },
-          ],
-          l: 2,
-          c: 2,
-        },
-        {
-          textContent: "\n",
-          l: 10,
-          c: 8,
-        },
-      ],
-    });
+    assert.deepStrictEqual(
+      parsedTemplateData,
+      /** @type {import("./parseTemplate.js").TemplateDataAST} */ ({
+        src: "/Users/ryangeyer/Projects/tempeh/test/fixtures/layout.tmph.html",
+        nodes: [
+          {
+            textContent: "<!DOCTYPE html>\n",
+            l: 1,
+            c: 1,
+          },
+          {
+            tagName: "html",
+            attributes: [
+              {
+                name: "lang",
+                value: "en",
+                l: 2,
+                c: 7,
+              },
+            ],
+            children: [
+              {
+                textContent: "\n  ",
+                l: 2,
+                c: 17,
+              },
+              {
+                tagName: "head",
+                children: [
+                  {
+                    textContent: "\n    ",
+                    l: 3,
+                    c: 9,
+                  },
+                  {
+                    tagName: "meta",
+                    attributes: [
+                      {
+                        name: "charset",
+                        value: "UTF-8",
+                        l: 4,
+                        c: 11,
+                      },
+                    ],
+                    l: 4,
+                    c: 6,
+                  },
+                  {
+                    textContent: "\n    ",
+                    l: 4,
+                    c: 29,
+                  },
+                  {
+                    tagName: "meta",
+                    attributes: [
+                      {
+                        name: "name",
+                        value: "viewport",
+                        l: 5,
+                        c: 11,
+                      },
+                      {
+                        name: "content",
+                        value: "width=device-width",
+                        l: 5,
+                        c: 27,
+                      },
+                    ],
+                    l: 5,
+                    c: 6,
+                  },
+                  {
+                    textContent: "\n  ",
+                    l: 5,
+                    c: 58,
+                  },
+                ],
+                l: 3,
+                c: 4,
+              },
+              {
+                textContent: "\n  ",
+                l: 6,
+                c: 10,
+              },
+              {
+                tagName: "body",
+                children: [
+                  {
+                    textContent: "\n    ",
+                    l: 7,
+                    c: 9,
+                  },
+                  {
+                    tagName: "slot",
+                    l: 8,
+                    c: 6,
+                  },
+                  {
+                    textContent: "\n  ",
+                    l: 8,
+                    c: 18,
+                  },
+                ],
+                l: 7,
+                c: 4,
+              },
+              {
+                textContent: "\n",
+                l: 9,
+                c: 10,
+              },
+            ],
+            l: 2,
+            c: 2,
+          },
+          {
+            textContent: "\n",
+            l: 10,
+            c: 8,
+          },
+        ],
+      })
+    );
   });
 });

@@ -1,8 +1,8 @@
 import { promises } from "node:fs";
-import {
-  startTemplateParserServer,
-  stopTemplateParserServer,
-} from "./templateParserServer.js";
+// import {
+//   startTemplateParserServer,
+//   stopTemplateParserServer,
+// } from "./templateParserServer.js";
 import { parseTemplate } from "./parseTemplate.js";
 import { resolveRelativePath } from "../../utils/resolveRelativePath.js";
 import path from "node:path";
@@ -35,20 +35,20 @@ const logMemoryUsage = (context) => {
   );
 };
 
-const startTemplateParserServerStartTime = performance.now();
-const parserServerOrigin = await startTemplateParserServer();
-const startTemplateParserServerEndTime = performance.now();
-console.log(
-  `startTemplateParserServer: ${
-    startTemplateParserServerEndTime - startTemplateParserServerStartTime
-  }ms`
-);
+// const startTemplateParserServerStartTime = performance.now();
+// const parserServerOrigin = await startTemplateParserServer();
+// const startTemplateParserServerEndTime = performance.now();
+// console.log(
+//   `startTemplateParserServer: ${
+//     startTemplateParserServerEndTime - startTemplateParserServerStartTime
+//   }ms`
+// );
 
-if (!parserServerOrigin) {
-  throw new Error("Template parser server not running");
-}
+// if (!parserServerOrigin) {
+//   throw new Error("Template parser server not running");
+// }
 
-logMemoryUsage("after starting server");
+// logMemoryUsage("after starting server");
 
 let memoryCheckID = setImmediate(function checkMemLoop() {
   logMemoryUsage("interval");
@@ -82,6 +82,6 @@ console.log(
   }ms`
 );
 
-stopTemplateParserServer();
+// stopTemplateParserServer();
 
 logMemoryUsage("after stopping server");
