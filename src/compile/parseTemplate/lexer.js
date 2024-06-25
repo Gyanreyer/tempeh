@@ -1,15 +1,27 @@
 import { createReadStream } from "fs";
 import {
-  asCharCode,
+  FWD_SLASH,
+  LT,
+  asCodePointString,
+  doCodePointStringsMatch,
+  getCodePointsFromUTF8BufferView,
+  isAttributeEqualsChar,
   isAttributeValueQuoteChar,
+  isBang,
+  isEndOfTagChar,
+  isForwardSlash,
+  isHyphen,
   isLegalAttributeNameChar,
   isLegalLeadingTagNameChar,
   isLegalTagNameChar,
   isLegalUnquotedAttributeValueChar,
+  isLineBreak,
   isNextCharEscapedByPrecedingString,
   isRawTextContentElementTagname,
   isScriptQuoteChar,
   isStyleQuoteChar,
+  isTagEndBracket,
+  isTagStartBracket,
   isVoidElementTagname,
   isWhitespace,
 } from "./lexerUtils.js";
@@ -25,7 +37,7 @@ export const LexerTokenType = Object.freeze({
   TEXT_CONTENT: 2,
   OPENING_TAGNAME: 3,
   CLOSING_TAGNAME: 4,
-  CLOSING_TAG_END: 5,
+  SELF_CLOSING_TAG_END: 5,
   ATTRIBUTE_NAME: 6,
   ATTRIBUTE_VALUE: 7,
   COMMENT: 8,
@@ -33,14 +45,15 @@ export const LexerTokenType = Object.freeze({
 
 /**
  * @typedef LexerTokenWithValue
- * @property {typeof LexerTokenType.ERROR
- *  | typeof LexerTokenType.TEXT_CONTENT
- *  | typeof LexerTokenType.OPENING_TAGNAME
- *  | typeof LexerTokenType.CLOSING_TAGNAME
- *  | typeof LexerTokenType.ATTRIBUTE_NAME
- *  | typeof LexerTokenType.ATTRIBUTE_VALUE
- *  | typeof LexerTokenType.COMMENT
- * } type
+ * @property {typeof LexerTokenType["ERROR"
+ *  | "TEXT_CONTENT"
+ *  | "OPENING_TAGNAME"
+ *  | "OPENING_TAGNAME"
+ *  | "CLOSING_TAGNAME"
+ *  | "ATTRIBUTE_NAME"
+ *  | "ATTRIBUTE_VALUE"
+ *  | "COMMENT"
+ * ]} type
  * @property {string} value
  * @property {number} l - Line number
  * @property {number} c - Column number
@@ -48,44 +61,39 @@ export const LexerTokenType = Object.freeze({
 
 /**
  * @typedef LexerTokenWithNoValue
- * @property {typeof LexerTokenType.EOF
- *  | typeof LexerTokenType.CLOSING_TAG_END
- * } type
+ * @property {typeof LexerTokenType["EOF" | "SELF_CLOSING_TAG_END"]} type
  * @property {never} [value]
  * @property {number} l - Line number
  * @property {number} c - Column number
  */
 
 /**
- * @typedef {LexerTokenWithValue | LexerTokenWithNoValue} LexerToken
+ * @template {keyof typeof LexerTokenType} [T=keyof typeof LexerTokenType]
+ * @typedef {(LexerTokenWithValue | LexerTokenWithNoValue) & {
+ *  type: typeof LexerTokenType[T]
+ * }} LexerToken
  */
 
 /**
- * @typedef LexerContext
- * @property {string|null} lastOpenedTagname
- */
+ * @typedef {() => Promise<[number, number, number] | LexerToken<"EOF" | "ERROR">>} PullCharFn
 
-const EOF = Symbol("EOF");
-
-/**
- * @typedef {() => Promise<[string | typeof EOF | Error, number, number]>} PullCharFn
-
- * @typedef {() => undefined | Error} UnreadCharFn
+ * @typedef {() => undefined | LexerToken<"ERROR">} UnreadCharFn
  */
 
 /**
  * @param {string} filePath
+ * @returns {AsyncGenerator<LexerToken, void>}
  */
 export async function* lex(filePath) {
-  const readStream = createReadStream(filePath, { encoding: "utf-8" });
+  const readStream = createReadStream(filePath);
 
-  /** @type {AsyncIterator<string, string>} */
+  /** @type {AsyncIterator<Buffer, unknown>} */
   const streamIterator = readStream[Symbol.asyncIterator]();
 
   /**
-   * @type {string | undefined}
+   * @type {number | undefined}
    */
-  let lastReadChar = undefined;
+  let lastReadCharCode = undefined;
 
   let line = 1;
   let lastReadCharLine = 1;
@@ -94,102 +102,108 @@ export async function* lex(filePath) {
   let lastReadCharColumn = 0;
 
   /**
-   * @type {string[]}
+   * @type {number[]}
    */
-  let bufferedChars = [];
-
-  /**
-   * @type {LexerContext}
-   */
-  const ctx = {
-    lastOpenedTagname: null,
-  };
+  let bufferedCodePoints = [];
+  let bufferedCharIndex = 0;
 
   /**
    * @type {PullCharFn}
    */
   const pullChar = async () => {
-    while (bufferedChars.length === 0) {
+    if (bufferedCharIndex >= bufferedCodePoints.length) {
       const { value, done } = await streamIterator.next();
       if (done) {
-        return [EOF, line, column];
+        return {
+          type: LexerTokenType.EOF,
+          l: line,
+          c: column,
+        };
       }
-      bufferedChars.push(...value);
+      const codePointsResult = getCodePointsFromUTF8BufferView(
+        new Uint8Array(value.buffer)
+      );
+      if (codePointsResult instanceof Error) {
+        return {
+          type: LexerTokenType.ERROR,
+          value: codePointsResult.message,
+          l: line,
+          c: column,
+        };
+      }
+      bufferedCodePoints = codePointsResult;
+      bufferedCharIndex = 0;
     }
 
     lastReadCharLine = line;
     lastReadCharColumn = column;
 
-    lastReadChar = bufferedChars.splice(0, 1)[0];
-    if (!lastReadChar) {
-      return [
-        new Error("Unexpectedly failed to read a character from buffer"),
-        line,
-        column,
-      ];
-    }
+    const charCodePoint = bufferedCodePoints[bufferedCharIndex];
+    ++bufferedCharIndex;
 
-    if (lastReadChar === "\n") {
+    lastReadCharCode = charCodePoint;
+
+    if (isLineBreak(charCodePoint)) {
       ++line;
       column = 0;
-    } else {
-      ++column;
+      return [charCodePoint, lastReadCharLine, lastReadCharColumn + 1];
     }
 
-    return [lastReadChar, line, column];
+    return [charCodePoint, line, ++column];
   };
 
   /**
    * @type {UnreadCharFn}
    */
   const unreadChar = () => {
-    if (lastReadChar) {
+    if (lastReadCharCode) {
       line = lastReadCharLine;
       column = lastReadCharColumn;
-      bufferedChars.unshift(lastReadChar);
-      lastReadChar = undefined;
+      bufferedCodePoints.unshift(lastReadCharCode);
+      lastReadCharCode = undefined;
     } else {
-      return new Error("Cannot unread a character that has not been read");
+      return {
+        type: LexerTokenType.ERROR,
+        value: "Cannot unread a character that has not been read",
+        l: line,
+        c: column,
+      };
     }
 
     return undefined;
   };
 
   /**
-   * @type {LexerStateFunction | null}
+   * @type {LexerStateGenerator | null}
    */
-  let nextStateFunction = lexTextContent;
-  while (nextStateFunction) {
-    /**
-     * @type {LexerToken[]}
-     */
-    let parsedTokens;
-    [nextStateFunction, ...parsedTokens] = await nextStateFunction(
-      pullChar,
-      unreadChar,
-      ctx
-    );
-    for (const token of parsedTokens) {
-      if (token.type === LexerTokenType.OPENING_TAGNAME) {
-        ctx.lastOpenedTagname = token.value;
-      }
-      yield token;
+  let tokenGenerator = lexTextContent(pullChar, unreadChar);
+  while (tokenGenerator) {
+    const { value, done } = await tokenGenerator.next();
+    if (done) {
+      tokenGenerator = value;
+    } else {
+      yield value;
     }
   }
 }
 
 /**
- * @typedef {(
- *  pullChar: PullCharFn,
- *  unreadChar: UnreadCharFn,
- *  ctx: Readonly<LexerContext>,
- * ) => Promise<[LexerStateFunction | null, ...LexerToken[]]>} LexerStateFunction
+ * @template {keyof typeof LexerTokenType} [T=keyof typeof LexerTokenType]
+ * @typedef {AsyncGenerator<LexerToken<T>, LexerStateGenerator | null>} LexerStateGenerator
  */
 
 /**
- * @type {LexerStateFunction}
+ * @template {keyof typeof LexerTokenType} [T=keyof typeof LexerTokenType]
+ * @typedef {(
+ *  pullChar: PullCharFn,
+ *  unreadChar: UnreadCharFn,
+ * ) => LexerStateGenerator} LexerStateIterator
  */
-async function lexTextContent(pullChar, unreadChar) {
+
+/**
+ * @type {LexerStateIterator<"TEXT_CONTENT" | "EOF" | "ERROR">}
+ */
+async function* lexTextContent(pullChar, unreadChar) {
   /**
    * @type {number|undefined}
    */
@@ -199,118 +213,115 @@ async function lexTextContent(pullChar, unreadChar) {
    */
   let startColumn;
 
-  let textContent = "";
+  /**
+   * @type {number[]}
+   */
+  const textContentCodes = [];
 
   while (true) {
-    let [nextChar, nextLine, nextCol] = await pullChar();
+    let pullCharResult = await pullChar();
 
-    if (nextChar === EOF) {
-      return [
-        null,
-        {
-          type: LexerTokenType.EOF,
-          l: nextLine,
-          c: nextCol,
-        },
-      ];
-    } else if (nextChar instanceof Error) {
-      return [
-        null,
-        {
-          type: LexerTokenType.ERROR,
-          value: nextChar.message,
-          l: nextLine,
-          c: nextCol,
-        },
-      ];
+    if (!Array.isArray(pullCharResult)) {
+      if (
+        pullCharResult.type === LexerTokenType.EOF &&
+        textContentCodes.length > 0
+      ) {
+        // If we have any text content buffered, yield it as a final token before EOF
+        yield {
+          type: LexerTokenType.TEXT_CONTENT,
+          value: String.fromCodePoint(...textContentCodes),
+          l: startLine ?? pullCharResult.l,
+          c: startColumn ?? pullCharResult.c,
+        };
+      }
+      yield pullCharResult;
+      return null;
     }
+
+    const [nextCharCode, nextLine, nextCol] = pullCharResult;
 
     if (!startLine || !startColumn) {
       startLine = nextLine;
       startColumn = nextCol;
     }
 
-    const nextCharCode = asCharCode(nextChar);
-
-    const textContentLength = textContent.length;
+    const textContentLength = textContentCodes.length;
 
     if (isLegalLeadingTagNameChar(nextCharCode)) {
-      if (textContentLength > 0 && textContent[textContentLength - 1] === "<") {
-        textContent = textContent.slice(0, textContentLength - 1);
+      if (
+        textContentLength > 0 &&
+        isTagStartBracket(textContentCodes[textContentLength - 1])
+      ) {
+        // Splice off the "<" character we buffered before the tag name
+        textContentCodes.splice(-1);
 
-        const unreadErr = unreadChar();
-        if (unreadErr) {
-          return [
-            null,
-            {
-              type: LexerTokenType.ERROR,
-              value: unreadErr.message,
-              l: nextLine,
-              c: nextCol,
-            },
-          ];
+        const unreadErrToken = unreadChar();
+        if (unreadErrToken) {
+          yield unreadErrToken;
+          return null;
         }
 
-        return [
-          lexOpeningTagName,
-          {
-            type: LexerTokenType.TEXT_CONTENT,
-            value: textContent,
-            l: startLine,
-            c: startColumn,
-          },
-        ];
-      } else if (textContentLength >= 2 && textContent.slice(-2) === "</") {
-        textContent = textContent.slice(0, textContentLength - 2);
+        yield {
+          type: LexerTokenType.TEXT_CONTENT,
+          value: String.fromCodePoint(...textContentCodes),
+          l: startLine,
+          c: startColumn,
+        };
+        return lexOpeningTagContents(pullChar, unreadChar);
+      } else if (
+        textContentLength >= 2 &&
+        isTagStartBracket(textContentCodes[textContentLength - 2]) &&
+        isForwardSlash(textContentCodes[textContentLength - 1])
+      ) {
+        textContentCodes.splice(-2);
 
-        const unreadErr = unreadChar();
-        if (unreadErr) {
-          return [
-            null,
-            {
-              type: LexerTokenType.ERROR,
-              value: unreadErr.message,
-              l: nextLine,
-              c: nextCol,
-            },
-          ];
+        const unreadErrToken = unreadChar();
+        if (unreadErrToken) {
+          yield unreadErrToken;
+          return null;
         }
 
-        return [
-          lexClosingTagName,
-          {
-            type: LexerTokenType.TEXT_CONTENT,
-            value: textContent,
-            l: startLine,
-            c: startColumn,
-          },
-        ];
+        yield {
+          type: LexerTokenType.TEXT_CONTENT,
+          value: String.fromCodePoint(...textContentCodes),
+          l: startLine,
+          c: startColumn,
+        };
+        return lexClosingTagName(pullChar, unreadChar);
       }
-    } else if (nextChar === "-") {
-      if (textContentLength >= 3 && textContent.slice(-3) === "<!-") {
-        // Comment start
-        textContent = textContent.slice(0, textContentLength - 3);
-        return [
-          lexCommentTag,
-          {
-            type: LexerTokenType.TEXT_CONTENT,
-            value: textContent,
-            l: startLine,
-            c: startColumn,
-          },
-        ];
+    } else if (isHyphen(nextCharCode)) {
+      // Test if we're starting a comment tag
+      if (
+        textContentLength >= 3 &&
+        // If the last 3 characters are "<!-" and the next char is "-", we've got a comment tag
+        isTagStartBracket(textContentCodes[textContentLength - 3]) &&
+        isBang(textContentCodes[textContentLength - 2]) &&
+        isHyphen(textContentCodes[textContentLength - 1])
+      ) {
+        textContentCodes.splice(-3);
+        yield {
+          type: LexerTokenType.TEXT_CONTENT,
+          value: String.fromCodePoint(...textContentCodes),
+          l: startLine,
+          c: startColumn,
+        };
+        return lexCommentTag(pullChar, unreadChar);
       }
     }
 
-    textContent += nextChar;
+    textContentCodes.push(nextCharCode);
   }
 }
 
 /**
- * @type {LexerStateFunction}
+ * Read the tag name at the start of an opening tag's contents.
+ * @type {LexerStateIterator<"OPENING_TAGNAME" | "EOF" | "ERROR">}
  */
-async function lexOpeningTagName(pullChar, unreadChar) {
-  let tagname = "";
+async function* lexOpeningTagName(pullChar, unreadChar) {
+  /**
+   * @type {number[]}
+   */
+  let tagnameCodePointString = [];
 
   /**
    * @type {number|null}
@@ -322,182 +333,268 @@ async function lexOpeningTagName(pullChar, unreadChar) {
   let startColumn = null;
 
   while (true) {
-    const [nextChar, nextLine, nextCol] = await pullChar();
+    const pullCharResult = await pullChar();
 
-    if (nextChar === EOF) {
-      return [
-        null,
-        {
-          type: LexerTokenType.EOF,
-          l: nextLine,
-          c: nextCol,
-        },
-      ];
-    } else if (nextChar instanceof Error) {
-      return [
-        null,
-        {
-          type: LexerTokenType.ERROR,
-          value: nextChar.message,
-          l: nextLine,
-          c: nextCol,
-        },
-      ];
+    if (!Array.isArray(pullCharResult)) {
+      yield pullCharResult;
+      return null;
     }
+
+    const nextCharCode = pullCharResult[0];
 
     if (!startLine || !startColumn) {
-      startLine = nextLine;
-      startColumn = nextCol;
+      startLine = pullCharResult[1];
+      startColumn = pullCharResult[2];
     }
 
-    const nextCharCode = asCharCode(nextChar);
-
     if (isLegalTagNameChar(nextCharCode)) {
-      tagname += nextChar;
+      tagnameCodePointString.push(nextCharCode);
     } else {
-      const unreadErr = unreadChar();
-      if (unreadErr) {
-        return [
-          null,
-          {
-            type: LexerTokenType.ERROR,
-            value: unreadErr.message,
-            l: nextLine,
-            c: nextCol,
-          },
-        ];
+      const unreadErrToken = unreadChar();
+      if (unreadErrToken) {
+        yield unreadErrToken;
+        return null;
       }
 
-      return [
-        lexOpeningTagContents,
-        {
-          type: LexerTokenType.OPENING_TAGNAME,
-          value: tagname,
-          l: startLine,
-          c: startColumn,
-        },
-      ];
+      yield {
+        type: LexerTokenType.OPENING_TAGNAME,
+        value: String.fromCodePoint(...tagnameCodePointString),
+        l: startLine,
+        c: startColumn,
+      };
+      return null;
     }
   }
 }
 
 /**
- * @type {LexerStateFunction}
+ * @type {LexerStateIterator<"ATTRIBUTE_NAME"|"ATTRIBUTE_VALUE"|"EOF"|"ERROR">}
  */
-async function lexOpeningTagContents(pullChar, unreadChar, ctx) {
+async function* lexOpeningTagContents(pullChar, unreadChar) {
+  /**
+   * Track the raw content of the opening tag so we can eject and yield it as text content
+   * if we hit the end of the file without reaching a closing ">".
+   * @type {number[]}
+   */
+  let rawOpeningTagContentCodePointStr = [];
+
+  /**
+   * @type {number|null}
+   */
+  let rawTextStartLine = null;
+  /**
+   * @type {number|null}
+   */
+  let rawTextStartColumn = null;
+
+  /**
+   * @type {PullCharFn}
+   */
+  const pullOpeningTagChar = async () => {
+    const pullCharResult = await pullChar();
+
+    if (
+      (!rawTextStartLine || !rawTextStartColumn) &&
+      Array.isArray(pullCharResult)
+    ) {
+      rawTextStartLine = pullCharResult[1];
+      rawTextStartColumn = pullCharResult[2];
+    }
+
+    return pullCharResult;
+  };
+
+  /**
+   * @type {number|null}
+   */
+  let prevCharCode = null;
+
+  /**
+   * @type {LexerToken[]}
+   */
+  let openingTagContentTokens = [];
+
   /**
    * @type {string|null}
    */
-  let prevChar = null;
+  let tagname = null;
 
-  const tagname = ctx.lastOpenedTagname;
+  for await (const token of lexOpeningTagName(pullOpeningTagChar, unreadChar)) {
+    switch (token.type) {
+      case LexerTokenType.OPENING_TAGNAME:
+        tagname = token.value;
+        break;
+      case LexerTokenType.EOF:
+        yield {
+          type: LexerTokenType.TEXT_CONTENT,
+          value: String.fromCodePoint(...rawOpeningTagContentCodePointStr),
+          l: rawTextStartLine ?? token.l,
+          c: rawTextStartColumn ?? token.c,
+        };
+        yield token;
+        return null;
+      case LexerTokenType.ERROR:
+        yield token;
+        return null;
+    }
+
+    openingTagContentTokens.push(token);
+  }
+
   if (!tagname) {
-    return [
-      null,
-      {
-        type: LexerTokenType.ERROR,
-        value: "Failed to find opening tagname for opening tag contents",
-        l: 0,
-        c: 0,
-      },
-    ];
+    yield {
+      type: LexerTokenType.ERROR,
+      value: "Failed to parse opening tagname for opening tag contents",
+      l: rawTextStartLine ?? 0,
+      c: rawTextStartColumn ?? 0,
+    };
+    return null;
   }
 
   const isVoidTag = isVoidElementTagname(tagname);
 
+  // Start a loop to lex attributes until we hit the end of the tag
   while (true) {
-    const [nextChar, nextLine, nextCol] = await pullChar();
+    const pullCharResult = await pullOpeningTagChar();
 
-    if (nextChar === EOF) {
-      return [
-        null,
-        {
-          type: LexerTokenType.EOF,
-          l: nextLine,
-          c: nextCol,
-        },
-      ];
-    } else if (nextChar instanceof Error) {
-      return [
-        null,
-        {
-          type: LexerTokenType.ERROR,
-          value: nextChar.message,
-          l: nextLine,
-          c: nextCol,
-        },
-      ];
+    if (!Array.isArray(pullCharResult)) {
+      yield pullCharResult;
+      return null;
     }
 
-    const nextCharCode = asCharCode(nextChar);
+    const [nextCharCode, nextLine, nextCol] = pullCharResult;
 
     if (!isWhitespace(nextCharCode)) {
       // We hit the end of the opening tag! Now we need to figure out what to do next.
-      if (nextChar === ">") {
+      if (isTagEndBracket(nextCharCode)) {
+        // Yield all the tokens we've collected so far for the opening tag
+        yield* openingTagContentTokens;
+
         // If this is a void tag or the tag was terminated with "/>", consider it a
         // self-closing tag with no content.
-        if (isVoidTag || prevChar === "/") {
-          return [
-            // Return to lexing text content after the tag
-            lexTextContent,
-            {
-              type: LexerTokenType.CLOSING_TAG_END,
-              l: nextLine,
-              c: nextCol,
-            },
-          ];
+        if (isVoidTag || (prevCharCode && isForwardSlash(prevCharCode))) {
+          yield {
+            type: LexerTokenType.SELF_CLOSING_TAG_END,
+            l: nextLine,
+            c: nextCol,
+          };
+          // Transition to lexing text content after the tag
+          return lexTextContent(pullChar, unreadChar);
         }
 
         // If this is a raw text content element,
         // we need to read the raw content inside the element.
         if (isRawTextContentElementTagname(tagname)) {
-          return [
-            lexRawElementContent,
-            {
-              type: LexerTokenType.CLOSING_TAG_END,
-              l: nextLine,
-              c: nextCol,
-            },
-          ];
+          return lexRawElementContent(
+            pullChar,
+            unreadChar,
+            asCodePointString(tagname)
+          );
         }
 
-        return [
-          // This is just the end of the opening tag, we don't have any tokens to emit.
-          // So just start lexing the text content inside the element
-          lexTextContent,
-        ];
+        // This is just the end of the opening tag, we don't have any tokens to emit.
+        // So just start lexing the text content inside the element
+        return lexTextContent(pullChar, unreadChar);
       } else if (isLegalAttributeNameChar(nextCharCode)) {
         // We just hit the start of an attribute name. Unread the first char so the next lexer can use it.
-        const unreadErr = unreadChar();
-        if (unreadErr) {
-          return [
-            null,
-            {
-              type: LexerTokenType.ERROR,
-              value: unreadErr.message,
-              l: nextLine,
-              c: nextCol,
-            },
-          ];
+        const unreadErrToken = unreadChar();
+        if (unreadErrToken) {
+          yield unreadErrToken;
+          return null;
         }
 
-        return [
-          // We don't have any tokens to emit, just transition to parsing the attribute.
-          lexOpeningTagAttributeName,
-        ];
+        // Lex the attribute name and value
+        for await (const token of lexOpeningTagAttribute(
+          pullOpeningTagChar,
+          unreadChar
+        )) {
+          if (
+            token.type === LexerTokenType.EOF ||
+            token.type === LexerTokenType.ERROR
+          ) {
+            yield token;
+            return null;
+          }
+          openingTagContentTokens.push(token);
+        }
       }
     }
 
-    prevChar = nextChar;
+    prevCharCode = nextCharCode;
+  }
+}
+
+/**
+ * @param {PullCharFn} pullChar
+ * @param {UnreadCharFn} unreadChar
+ * @returns {AsyncGenerator<LexerToken<"ATTRIBUTE_NAME" | "ATTRIBUTE_VALUE" | "EOF" | "ERROR">, void>}
+ */
+async function* lexOpeningTagAttribute(pullChar, unreadChar) {
+  const attributeNameToken = await parseOpeningTagAttributeName(
+    pullChar,
+    unreadChar
+  );
+
+  yield attributeNameToken;
+  if (
+    attributeNameToken.type === LexerTokenType.EOF ||
+    attributeNameToken.type === LexerTokenType.ERROR
+  ) {
+    return;
+  }
+
+  const attributeNameTerminatorPullCharResult = await pullChar();
+
+  if (!Array.isArray(attributeNameTerminatorPullCharResult)) {
+    return yield attributeNameTerminatorPullCharResult;
+  }
+
+  const [attributeNameTerminatorCharCode] =
+    attributeNameTerminatorPullCharResult;
+  if (isAttributeEqualsChar(attributeNameTerminatorCharCode)) {
+    // Looks like this attribute has a value. We need to determine if the value is quoted or not.
+    const quoteOrAttrValuePullCharResult = await pullChar();
+
+    if (!Array.isArray(quoteOrAttrValuePullCharResult)) {
+      return yield quoteOrAttrValuePullCharResult;
+    }
+
+    const [quoteOrAttributeValueCharCode] = quoteOrAttrValuePullCharResult;
+
+    // Unread the next char so the next lexer can use it.
+    const unreadErrToken = unreadChar();
+    if (unreadErrToken) {
+      return yield unreadErrToken;
+    }
+
+    if (isAttributeValueQuoteChar(quoteOrAttributeValueCharCode)) {
+      yield* lexOpeningTagQuotedAttributeValue(pullChar, unreadChar);
+    } else if (
+      isLegalUnquotedAttributeValueChar(quoteOrAttributeValueCharCode)
+    ) {
+      yield* lexOpeningTagUnquotedAttributeValue(pullChar, unreadChar);
+    }
+  } else {
+    // Looks like this is just a boolean attribute with no value,
+    // so we'll transition back to lexing the opening tag contents.
+    const unreadErrToken = unreadChar();
+    if (unreadErrToken) {
+      return yield unreadErrToken;
+    }
   }
 }
 
 /**
  * Read the attribute name until we encounter an illegal attribute name char; usually "=" for an attribute with a value or whitespace for a boolean attribute.
- * @type {LexerStateFunction}
+ * @param {PullCharFn} pullChar
+ * @param {UnreadCharFn} unreadChar
+ * @returns {Promise<LexerToken<"ATTRIBUTE_NAME" | "EOF" | "ERROR">>}
  */
-async function lexOpeningTagAttributeName(pullChar, unreadChar) {
-  let attributeName = "";
+async function parseOpeningTagAttributeName(pullChar, unreadChar) {
+  /**
+   * @type {number[]}
+   */
+  let attributeNameCodePointString = [];
 
   /**
    * @type {number|null}
@@ -509,135 +606,49 @@ async function lexOpeningTagAttributeName(pullChar, unreadChar) {
   let startColumn = null;
 
   while (true) {
-    const [nextChar, nextLine, nextCol] = await pullChar();
+    const pullCharResult = await pullChar();
 
-    if (nextChar === EOF) {
-      return [
-        null,
-        {
-          type: LexerTokenType.EOF,
-          l: nextLine,
-          c: nextCol,
-        },
-      ];
-    } else if (nextChar instanceof Error) {
-      return [
-        null,
-        {
-          type: LexerTokenType.ERROR,
-          value: nextChar.message,
-          l: nextLine,
-          c: nextCol,
-        },
-      ];
+    if (!Array.isArray(pullCharResult)) {
+      return pullCharResult;
     }
+
+    const [nextCharCode, nextLine, nextCol] = pullCharResult;
 
     if (!startLine || !startColumn) {
       startLine = nextLine;
       startColumn = nextCol;
     }
 
-    const nextCharCode = asCharCode(nextChar);
-
     if (!isLegalAttributeNameChar(nextCharCode)) {
-      if (nextChar === "=") {
-        // Looks like this attribute has a value. We need to determine if the value is quoted or not.
-        const [quoteOrAttributeValueChar] = await pullChar();
-
-        if (quoteOrAttributeValueChar === EOF) {
-          return [
-            null,
-            {
-              type: LexerTokenType.EOF,
-              l: nextLine,
-              c: nextCol,
-            },
-          ];
-        } else if (quoteOrAttributeValueChar instanceof Error) {
-          return [
-            null,
-            {
-              type: LexerTokenType.ERROR,
-              value: quoteOrAttributeValueChar.message,
-              l: nextLine,
-              c: nextCol,
-            },
-          ];
-        }
-
-        // Unread the next char so the next lexer can use it.
-        const unreadErr = unreadChar();
-        if (unreadErr) {
-          return [
-            null,
-            {
-              type: LexerTokenType.ERROR,
-              value: unreadErr.message,
-              l: nextLine,
-              c: nextCol,
-            },
-          ];
-        }
-
-        const attributeNameToken = {
-          type: LexerTokenType.ATTRIBUTE_NAME,
-          value: attributeName,
-          l: startLine,
-          c: startColumn,
-        };
-
-        const quoteOrAttributeValueCharCode = asCharCode(
-          quoteOrAttributeValueChar
-        );
-
-        if (isAttributeValueQuoteChar(quoteOrAttributeValueCharCode)) {
-          return [lexOpeningTagQuotedAttributeValue, attributeNameToken];
-        } else if (
-          isLegalUnquotedAttributeValueChar(quoteOrAttributeValueCharCode)
-        ) {
-          return [lexOpeningTagUnquotedAttributeValue, attributeNameToken];
-        } else {
-          return [lexOpeningTagContents, attributeNameToken];
-        }
-      } else {
-        // Looks like this is just a boolean attribute with no value,
-        // so we'll transition back to lexing the opening tag contents.
-        const unreadErr = unreadChar();
-        if (unreadErr) {
-          return [
-            null,
-            {
-              type: LexerTokenType.ERROR,
-              value: unreadErr.message,
-              l: nextLine,
-              c: nextCol,
-            },
-          ];
-        }
-
-        return [
-          lexOpeningTagContents,
-          {
-            type: LexerTokenType.ATTRIBUTE_NAME,
-            value: attributeName,
-            l: startLine,
-            c: startColumn,
-          },
-        ];
+      const unreadErrToken = unreadChar();
+      if (unreadErrToken) {
+        return unreadErrToken;
       }
+
+      return {
+        type: LexerTokenType.ATTRIBUTE_NAME,
+        value: String.fromCodePoint(...attributeNameCodePointString),
+        l: startLine,
+        c: startColumn,
+      };
     }
 
-    attributeName += nextChar;
+    attributeNameCodePointString.push(nextCharCode);
   }
 }
 
 /**
  * Reads a quoted attribute value until the closing quote is encountered.
  * The opening quote will be the first character read.
- * @type {LexerStateFunction}
+ * @param {PullCharFn} pullChar
+ * @param {UnreadCharFn} unreadChar
+ * @returns {AsyncGenerator<LexerToken<"ATTRIBUTE_VALUE" | "EOF" | "ERROR">, void>}
  */
-async function lexOpeningTagQuotedAttributeValue(pullChar, unreadChar) {
-  let attributeValue = "";
+async function* lexOpeningTagQuotedAttributeValue(pullChar, unreadChar) {
+  /**
+   * @type {number[]}
+   */
+  let attributeValueCodePointString = [];
   /**
    * @type {number|null}
    */
@@ -653,74 +664,54 @@ async function lexOpeningTagQuotedAttributeValue(pullChar, unreadChar) {
   let startColumn = null;
 
   while (true) {
-    const [nextChar, nextLine, nextCol] = await pullChar();
+    const pullCharResult = await pullChar();
 
-    if (nextChar === EOF) {
-      return [
-        null,
-        {
-          type: LexerTokenType.EOF,
-          l: nextLine,
-          c: nextCol,
-        },
-      ];
-    } else if (nextChar instanceof Error) {
-      return [
-        null,
-        {
-          type: LexerTokenType.ERROR,
-          value: nextChar.message,
-          l: nextLine,
-          c: nextCol,
-        },
-      ];
+    if (!Array.isArray(pullCharResult)) {
+      return yield pullCharResult;
     }
 
-    const nextCharCode = asCharCode(nextChar);
+    const [nextCharCode, nextLine, nextCol] = pullCharResult;
 
     if (!startLine || !startColumn || !quoteCharCode) {
       quoteCharCode = nextCharCode;
       startLine = nextLine;
       startColumn = nextCol;
+      // Continue to the next loop iteration since we don't want to include the quote character in the attribute value.
+      continue;
     }
 
     if (
       nextCharCode === quoteCharCode &&
-      !isNextCharEscapedByPrecedingString(attributeValue)
+      !isNextCharEscapedByPrecedingString(attributeValueCodePointString)
     ) {
-      const unreadErr = unreadChar();
-      if (unreadErr) {
-        return [
-          null,
-          {
-            type: LexerTokenType.ERROR,
-            value: unreadErr.message,
-            l: nextLine,
-            c: nextCol,
-          },
-        ];
+      const unreadErrToken = unreadChar();
+      if (unreadErrToken) {
+        return yield unreadErrToken;
       }
 
-      return [
-        lexOpeningTagContents,
-        {
-          type: LexerTokenType.ATTRIBUTE_VALUE,
-          value: attributeValue,
-          l: startLine,
-          c: startColumn,
-        },
-      ];
+      return yield {
+        type: LexerTokenType.ATTRIBUTE_VALUE,
+        value: String.fromCodePoint(...attributeValueCodePointString),
+        l: startLine,
+        c: startColumn,
+      };
     }
 
-    attributeValue += nextChar;
+    attributeValueCodePointString.push(nextCharCode);
   }
 }
 
 /**
- * @type {LexerStateFunction}
+ * Reads an unquoted attribute value until the next whitespace or tag end is encountered.
+ * @param {PullCharFn} pullChar
+ * @param {UnreadCharFn} unreadChar
+ * @returns {AsyncGenerator<LexerToken<"ATTRIBUTE_VALUE" | "EOF" | "ERROR">, void>}
  */
-async function lexOpeningTagUnquotedAttributeValue(pullChar, unreadChar) {
-  let attributeValue = "";
+async function* lexOpeningTagUnquotedAttributeValue(pullChar, unreadChar) {
+  /**
+   * @type {number[]}
+   */
+  let attributeValueCodePointString = [];
 
   /**
    * @type {number|null}
@@ -732,70 +723,45 @@ async function lexOpeningTagUnquotedAttributeValue(pullChar, unreadChar) {
   let startColumn = null;
 
   while (true) {
-    const [nextChar, nextLine, nextCol] = await pullChar();
+    const pullCharResult = await pullChar();
 
-    if (nextChar === EOF) {
-      return [
-        null,
-        {
-          type: LexerTokenType.EOF,
-          l: nextLine,
-          c: nextCol,
-        },
-      ];
-    } else if (nextChar instanceof Error) {
-      return [
-        null,
-        {
-          type: LexerTokenType.ERROR,
-          value: nextChar.message,
-          l: nextLine,
-          c: nextCol,
-        },
-      ];
+    if (!Array.isArray(pullCharResult)) {
+      return yield pullCharResult;
     }
+
+    const [nextCharCode, nextLine, nextCol] = pullCharResult;
 
     if (!startLine || !startColumn) {
       startLine = nextLine;
       startColumn = nextCol;
     }
-
-    const nextCharCode = asCharCode(nextChar);
 
     if (!isLegalUnquotedAttributeValueChar(nextCharCode)) {
-      const unreadErr = unreadChar();
-      if (unreadErr) {
-        return [
-          null,
-          {
-            type: LexerTokenType.ERROR,
-            value: unreadErr.message,
-            l: nextLine,
-            c: nextCol,
-          },
-        ];
+      const unreadErrToken = unreadChar();
+      if (unreadErrToken) {
+        return yield unreadErrToken;
       }
 
-      return [
-        lexOpeningTagContents,
-        {
-          type: LexerTokenType.ATTRIBUTE_VALUE,
-          value: attributeValue,
-          l: startLine,
-          c: startColumn,
-        },
-      ];
+      return yield {
+        type: LexerTokenType.ATTRIBUTE_VALUE,
+        value: String.fromCodePoint(...attributeValueCodePointString),
+        l: startLine,
+        c: startColumn,
+      };
     }
 
-    attributeValue += nextChar;
+    attributeValueCodePointString.push(nextCharCode);
   }
 }
 
 /**
- * @type {LexerStateFunction}
+ * @type {LexerStateIterator<"EOF"|"ERROR">}
  */
-async function lexClosingTagName(pullChar, unreadChar) {
-  let tagname = "";
+async function* lexClosingTagName(pullChar, unreadChar) {
+  /**
+   * @type {number[]}
+   */
+  let tagnameCodePointStr = [];
 
   /**
    * @type {number|null}
@@ -807,71 +773,46 @@ async function lexClosingTagName(pullChar, unreadChar) {
   let startColumn = null;
 
   while (true) {
-    const [nextChar, nextLine, nextCol] = await pullChar();
+    const pullCharResult = await pullChar();
 
-    if (nextChar === EOF) {
-      return [
-        null,
-        {
-          type: LexerTokenType.EOF,
-          l: nextLine,
-          c: nextCol,
-        },
-      ];
-    } else if (nextChar instanceof Error) {
-      return [
-        null,
-        {
-          type: LexerTokenType.ERROR,
-          value: nextChar.message,
-          l: nextLine,
-          c: nextCol,
-        },
-      ];
+    if (!Array.isArray(pullCharResult)) {
+      yield pullCharResult;
+      return null;
     }
+
+    const [nextCharCode, nextLine, nextCol] = pullCharResult;
 
     if (!startLine || !startColumn) {
       startLine = nextLine;
       startColumn = nextCol;
     }
 
-    const nextCharCode = asCharCode(nextChar);
-
     if (!isLegalTagNameChar(nextCharCode)) {
-      const unreadErr = unreadChar();
-      if (unreadErr) {
-        return [
-          null,
-          {
-            type: LexerTokenType.ERROR,
-            value: unreadErr.message,
-            l: nextLine,
-            c: nextCol,
-          },
-        ];
+      const unreadErrToken = unreadChar();
+      if (unreadErrToken) {
+        yield unreadErrToken;
+        return null;
       }
 
-      return [
-        lexClosingTagEnd,
-        {
-          type: LexerTokenType.CLOSING_TAGNAME,
-          value: tagname,
-          l: startLine,
-          c: startColumn,
-        },
-      ];
+      yield {
+        type: LexerTokenType.CLOSING_TAGNAME,
+        value: String.fromCodePoint(...tagnameCodePointStr),
+        l: startLine,
+        c: startColumn,
+      };
+      return lexClosingTagEnd(pullChar, unreadChar);
     }
 
-    tagname += nextChar;
+    tagnameCodePointStr.push(nextCharCode);
   }
 }
 
 /**
  * At this point, we are in a closing tag but after the tag name. We just need to read until
  * the closing ">" is encountered.
- * @type {LexerStateFunction}
+ * @type {LexerStateIterator<"EOF"|"ERROR">}
  */
-async function lexClosingTagEnd(pullChar) {
+async function* lexClosingTagEnd(pullChar, unreadChar) {
   /**
    * @type {number|undefined}
    */
@@ -882,35 +823,21 @@ async function lexClosingTagEnd(pullChar) {
   let startColumn;
 
   while (true) {
-    const [nextChar, nextLine, nextCol] = await pullChar();
+    const pullCharResult = await pullChar();
+    if (!Array.isArray(pullCharResult)) {
+      yield pullCharResult;
+      return null;
+    }
+
+    const [nextCharCode, nextLine, nextCol] = pullCharResult;
+
     if (!startLine || !startColumn) {
       startLine = nextLine;
       startColumn = nextCol;
     }
 
-    if (nextChar === EOF) {
-      return [
-        null,
-        {
-          type: LexerTokenType.EOF,
-          l: nextLine,
-          c: nextCol,
-        },
-      ];
-    } else if (nextChar instanceof Error) {
-      return [
-        null,
-        {
-          type: LexerTokenType.ERROR,
-          value: nextChar.message,
-          l: nextLine,
-          c: nextCol,
-        },
-      ];
-    }
-
-    if (nextChar === ">") {
-      return [lexTextContent];
+    if (isTagEndBracket(nextCharCode)) {
+      return lexTextContent(pullChar, unreadChar);
     }
   }
 }
@@ -919,9 +846,9 @@ async function lexClosingTagEnd(pullChar) {
  * HTML comment tags in form <!-- ... -->
  * This lexer is starting after the opening "<!--" tag, so it just needs to
  * read until the closing "-->" is encountered.
- * @type {LexerStateFunction}
+ * @type {LexerStateIterator<"COMMENT"|"EOF"|"ERROR">}
  */
-async function lexCommentTag(pullChar) {
+async function* lexCommentTag(pullChar, unreadChar) {
   /**
    * @type {number|undefined}
    */
@@ -931,58 +858,64 @@ async function lexCommentTag(pullChar) {
    */
   let startColumn;
 
-  let commentContent = "";
+  /**
+   * @type {number[]}
+   */
+  let commentContentCodePointStr = [];
 
   while (true) {
-    let [nextChar, nextLine, nextCol] = await pullChar();
+    const pullCharResult = await pullChar();
 
-    if (nextChar === EOF) {
-      return [
-        null,
-        {
-          type: LexerTokenType.EOF,
-          l: nextLine,
-          c: nextCol,
-        },
-      ];
-    } else if (nextChar instanceof Error) {
-      return [
-        null,
-        {
-          type: LexerTokenType.ERROR,
-          value: nextChar.message,
-          l: nextLine,
-          c: nextCol,
-        },
-      ];
+    if (!Array.isArray(pullCharResult)) {
+      yield pullCharResult;
+      return null;
     }
+
+    const [nextCharCode, nextLine, nextCol] = pullCharResult;
 
     if (!startLine || !startColumn) {
       startLine = nextLine;
       startColumn = nextCol;
     }
 
-    if (nextChar === ">" && commentContent.slice(-2) === "--") {
-      return [
-        lexTextContent,
-        {
-          type: LexerTokenType.COMMENT,
-          value: commentContent.slice(0, -2).trim(),
-          l: startLine,
-          c: startColumn,
-        },
-      ];
+    const commentContentLength = commentContentCodePointStr.length;
+
+    if (
+      isEndOfTagChar(nextCharCode) &&
+      isHyphen(commentContentCodePointStr[commentContentLength - 1]) &&
+      isHyphen(commentContentCodePointStr[commentContentLength - 2])
+    ) {
+      commentContentCodePointStr.splice(-2);
+
+      yield {
+        type: LexerTokenType.COMMENT,
+        value: String.fromCodePoint(...commentContentCodePointStr).trim(),
+        l: startLine,
+        c: startColumn,
+      };
+      return lexTextContent(pullChar, unreadChar);
     }
 
-    commentContent += nextChar;
+    commentContentCodePointStr.push(nextCharCode);
   }
 }
 
+const SCRIPT_CODE_POINT_STRING = asCodePointString("script");
+const STYLE_CODE_POINT_STRING = asCodePointString("style");
+
 /**
  * Read the raw contents of a script or style tag until the closing tag is encountered.
- * @type {LexerStateFunction}
+ *
+ * @param {PullCharFn} pullChar
+ * @param {UnreadCharFn} unreadChar
+ * @param {number[]} elementTagNameCodeString
+ * @returns {LexerStateGenerator<"EOF" | "ERROR" | "TEXT_CONTENT" | "CLOSING_TAGNAME">}
  */
-async function lexRawElementContent(pullChar, unreadChar, ctx) {
+async function* lexRawElementContent(
+  pullChar,
+  unreadChar,
+  elementTagNameCodeString
+) {
   /**
    * @type {number|null}
    */
@@ -992,98 +925,91 @@ async function lexRawElementContent(pullChar, unreadChar, ctx) {
    */
   let startColumn = null;
 
-  let rawContent = "";
+  /**
+   * @type {number[]}
+   */
+  const rawContentCharCodes = [];
 
-  // The tagname which we should keep read raw content until we hit
-  const targetClosingTagname = ctx.lastOpenedTagname;
+  const closingTagnameMatchString = [
+    // "<"
+    LT,
+    // "/"
+    FWD_SLASH,
+    ...elementTagNameCodeString,
+  ];
 
-  if (!targetClosingTagname) {
-    return [
-      null,
-      {
-        type: LexerTokenType.ERROR,
-        value: "Failed to find opening tagname for raw content",
-        l: 0,
-        c: 0,
-      },
-    ];
-  }
-
-  const closingTagnameMatchString = `</${targetClosingTagname}`;
-
-  const isScript = targetClosingTagname === "script";
-  const isStyle = targetClosingTagname === "style";
+  const isScript = doCodePointStringsMatch(
+    elementTagNameCodeString,
+    SCRIPT_CODE_POINT_STRING
+  );
+  const isStyle = doCodePointStringsMatch(
+    elementTagNameCodeString,
+    STYLE_CODE_POINT_STRING
+  );
 
   /**
-   * @type {string | null}
+   * @type {number | null}
    */
-  let unterminatedQuoteChar = null;
+  let unterminatedQuoteCharCode = null;
 
   while (true) {
-    let [nextChar, nextLine, nextCol] = await pullChar();
+    const pullCharResult = await pullChar();
 
-    if (nextChar === EOF) {
-      return [
-        null,
-        {
-          type: LexerTokenType.EOF,
-          l: nextLine,
-          c: nextCol,
-        },
-      ];
-    } else if (nextChar instanceof Error) {
-      return [
-        null,
-        {
-          type: LexerTokenType.ERROR,
-          value: nextChar.message,
-          l: nextLine,
-          c: nextCol,
-        },
-      ];
+    if (!Array.isArray(pullCharResult)) {
+      yield pullCharResult;
+      return null;
     }
+
+    const [nextCharCode, nextLine, nextCol] = pullCharResult;
 
     if (!startLine || !startColumn) {
       startLine = nextLine;
       startColumn = nextCol;
     }
 
-    const nextCharCode = asCharCode(nextChar);
-
-    if (unterminatedQuoteChar !== null) {
-      if (nextChar === unterminatedQuoteChar) {
-        if (!isNextCharEscapedByPrecedingString(rawContent)) {
+    if (unterminatedQuoteCharCode !== null) {
+      if (nextCharCode === unterminatedQuoteCharCode) {
+        if (!isNextCharEscapedByPrecedingString(rawContentCharCodes)) {
           // The quote character is not escaped, so we can now consider the quote as terminated.
-          unterminatedQuoteChar = null;
+          unterminatedQuoteCharCode = null;
         }
       }
     } else if (
       (isScript && isScriptQuoteChar(nextCharCode)) ||
       (isStyle && isStyleQuoteChar(nextCharCode))
     ) {
-      unterminatedQuoteChar = nextChar;
+      unterminatedQuoteCharCode = nextCharCode;
     } else if (
       !isLegalTagNameChar(nextCharCode) &&
-      rawContent.endsWith(closingTagnameMatchString)
+      doCodePointStringsMatch(
+        rawContentCharCodes,
+        closingTagnameMatchString,
+        -closingTagnameMatchString.length
+      )
     ) {
+      const unreadErrToken = unreadChar();
+      if (unreadErrToken) {
+        yield unreadErrToken;
+        return null;
+      }
+
       const closingTagnameMatchStringLength = closingTagnameMatchString.length;
-      return [
-        lexClosingTagEnd,
-        {
-          type: LexerTokenType.TEXT_CONTENT,
-          value: rawContent.slice(0, -closingTagnameMatchStringLength),
-          l: startLine,
-          c: startColumn,
-        },
-        {
-          type: LexerTokenType.CLOSING_TAGNAME,
-          value: targetClosingTagname,
-          l: nextLine,
-          c: nextCol - closingTagnameMatchStringLength,
-        },
-      ];
+      rawContentCharCodes.splice(-closingTagnameMatchStringLength);
+      yield {
+        type: LexerTokenType.TEXT_CONTENT,
+        value: String.fromCodePoint(...rawContentCharCodes),
+        l: startLine,
+        c: startColumn,
+      };
+      yield {
+        type: LexerTokenType.CLOSING_TAGNAME,
+        value: String.fromCodePoint(...elementTagNameCodeString),
+        l: nextLine,
+        c: nextCol - closingTagnameMatchStringLength,
+      };
+      return lexClosingTagEnd(pullChar, unreadChar);
     }
 
-    rawContent += nextChar;
+    rawContentCharCodes.push(nextCharCode);
   }
 }

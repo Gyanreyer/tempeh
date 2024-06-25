@@ -7,7 +7,7 @@ import {
   startTemplateParserServer,
   stopTemplateParserServer,
 } from "./templateParserServer.js";
-import { writeFile, writeFileSync } from "node:fs";
+import { writeFileSync } from "node:fs";
 
 /**
  * @typedef {import("./parseTemplate.js").TemplateDataAST} TemplateDataAST
@@ -825,7 +825,7 @@ describe("parseTemplate", () => {
     assert.deepStrictEqual(
       parsedTemplateData,
       /** @type {import("./parseTemplate.js").TemplateDataAST} */ ({
-        src: "/Users/ryangeyer/Projects/tempeh/test/fixtures/layout.tmph.html",
+        src: templateSourceFilePath,
         nodes: [
           {
             textContent: "<!DOCTYPE html>\n",
@@ -942,6 +942,61 @@ describe("parseTemplate", () => {
             textContent: "\n",
             l: 10,
             c: 8,
+          },
+        ],
+      })
+    );
+  });
+
+  test("should parse a component file containing multi-byte unicode characters", async () => {
+    const templateSourceFilePath = resolveRelativePath(
+      "../../../test/fixtures/unicode.tmph.html",
+      import.meta
+    );
+    const parsedTemplateData = await parseTemplate(templateSourceFilePath);
+
+    assert.deepStrictEqual(
+      parsedTemplateData,
+      /** @type {import("./parseTemplate.js").TemplateDataAST} */ ({
+        src: templateSourceFilePath,
+        nodes: [
+          {
+            tagName: "hey-👋",
+            l: 1,
+            c: 2,
+            children: [
+              {
+                textContent:
+                  "\n  This is a valid web 🕸️ component name. At least, according to spec 🤷",
+                l: 1,
+                c: 8,
+              },
+              {
+                tagName: "br",
+                l: 2,
+                c: 72,
+              },
+              {
+                textContent: "\n  Check this out: 𐐷𝄞ЦѾئሐᏠ",
+                l: 2,
+                c: 77,
+              },
+              {
+                tagName: "br",
+                l: 3,
+                c: 27,
+              },
+              {
+                textContent: "\n  Just flexing my unicode muscles 💪\n",
+                l: 3,
+                c: 32,
+              },
+            ],
+          },
+          {
+            textContent: "\n",
+            l: 5,
+            c: 9,
           },
         ],
       })

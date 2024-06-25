@@ -2,7 +2,95 @@
  * @param {string} char
  * @returns {number}
  */
-export const asCharCode = (char) => char.charCodeAt(0);
+export const asCharCode = (char) =>
+  /** @type {number} **/ (char.codePointAt(0));
+
+const _32BitIntMask = 0xff0000;
+/**
+ * @param {number} codePoint
+ * @returns {boolean}
+ */
+const is32BitInt = (codePoint) => (codePoint & _32BitIntMask) > 0;
+
+/**
+ * @param {string} str
+ * @returns {number[]}
+ */
+export const asCodePointString = (str) => {
+  const strLen = str.length;
+  const codePoints = new Array(str.length);
+
+  for (
+    let strIndex = 0, codeIndex = 0;
+    strIndex < strLen;
+    ++strIndex, ++codeIndex
+  ) {
+    const codePoint = str.codePointAt(strIndex);
+    if (codePoint === undefined) {
+      break;
+    }
+
+    codePoints[codeIndex] = codePoint;
+    if (is32BitInt(codePoint)) {
+      // Strings are indexed by 16-bit code units, so if we just got a 32-bit code point,
+      // we need to skip the next code unit
+      ++strIndex;
+      --codePoints.length;
+    }
+  }
+
+  return codePoints;
+};
+
+/**
+ * Takes a Uint8Array of UTF-8 encoded text and returns an array of code points
+ * @param {Uint8Array} bufferView
+ * @returns {number[] | Error}
+ */
+export const getCodePointsFromUTF8BufferView = (bufferView) => {
+  /**
+   * @type {number[]}
+   */
+  const codePoints = new Array(bufferView.length);
+  let codePointIndex = 0;
+
+  for (
+    let byteReadIndex = 0, bufferLen = bufferView.length;
+    byteReadIndex < bufferLen;
+    ++byteReadIndex, ++codePointIndex
+  ) {
+    const firstByte = bufferView[byteReadIndex];
+
+    if (firstByte < 0x80) {
+      // 1-byte sequence
+      codePoints[codePointIndex] = firstByte;
+    } else if (firstByte >= 0xc0 && firstByte <= 0xdf) {
+      // 2-byte sequence
+      codePoints[codePointIndex] =
+        ((firstByte & 0x1f) << 6) | (bufferView[++byteReadIndex] & 0x3f);
+    } else if (firstByte >= 0xe0 && firstByte <= 0xef) {
+      // 3-byte sequence
+      codePoints[codePointIndex] =
+        ((firstByte & 0x0f) << 12) |
+        ((bufferView[++byteReadIndex] & 0x3f) << 6) |
+        (bufferView[++byteReadIndex] & 0x3f);
+    } else if (firstByte >= 0xf0 && firstByte <= 0xf7) {
+      // 4-byte sequence
+      codePoints[codePointIndex] =
+        ((firstByte & 0x07) << 18) |
+        ((bufferView[++byteReadIndex] & 0x3f) << 12) |
+        ((bufferView[++byteReadIndex] & 0x3f) << 6) |
+        (bufferView[++byteReadIndex] & 0x3f);
+    } else {
+      return new Error(`Invalid UTF-8 leading byte: ${firstByte}`);
+    }
+  }
+
+  // Trim off any unused array slots due to multi-byte code points
+  codePoints.length = codePointIndex;
+
+  return codePoints;
+};
 
 const LOWER_A = 97;
 const LOWER_Z = 122;
@@ -59,6 +147,12 @@ export const isNumber = (charCode) => charCode >= ONE && charCode <= NINE;
 const HYPHEN = 45;
 const PERIOD = 46;
 const COLON = 58;
+
+/**
+ * @param {number} charCode
+ * @returns {boolean}
+ */
+export const isHyphen = (charCode) => charCode === HYPHEN;
 
 /**
  * @param {number} charCode
@@ -191,8 +285,28 @@ export const isVoidElementTagname = (tagName) =>
 export const isAttributeValueQuoteChar = (charCode) =>
   charCode === SINGLE_QUOTE || charCode === DOUBLE_QUOTE;
 
-const GT = 62;
-const FWD_SLASH = 47;
+export const LT = 60;
+export const GT = 62;
+
+/**
+ * @param {number} charCode
+ * @returns {boolean}
+ */
+export const isTagStartBracket = (charCode) => charCode === LT;
+/**
+ *
+ * @param {number} charCode
+ * @returns {boolean}
+ */
+export const isTagEndBracket = (charCode) => charCode === GT;
+
+export const FWD_SLASH = 47;
+
+/**
+ * @param {number} charCode
+ * @returns {boolean}
+ */
+export const isForwardSlash = (charCode) => charCode === FWD_SLASH;
 
 /**
  * @param {number} charCode
@@ -207,23 +321,41 @@ const EQUALS = 61;
  * @param {number} charCode
  * @returns {boolean}
  */
-export const isLegalAttributeNameChar = (charCode) =>
-  charCode !== EQUALS &&
-  !isWhitespace(charCode) &&
-  !isEndOfTagChar(charCode) &&
-  !isAttributeValueQuoteChar(charCode);
+export const isAttributeEqualsChar = (charCode) => charCode === EQUALS;
 
-const LT = 60;
+/**
+ * @param {number} charCode
+ * @returns {boolean}
+ */
+export const isLegalAttributeNameChar = (charCode) =>
+  !(
+    isAttributeEqualsChar(charCode) ||
+    isWhitespace(charCode) ||
+    isEndOfTagChar(charCode) ||
+    isAttributeValueQuoteChar(charCode)
+  );
 
 /**
  * @param {number} charCode
  * @returns {boolean}
  */
 export const isLegalUnquotedAttributeValueChar = (charCode) =>
-  !isWhitespace(charCode) &&
-  !isAttributeValueQuoteChar(charCode) &&
-  !isEndOfTagChar(charCode) &&
-  charCode !== LT;
+  !(
+    isWhitespace(charCode) ||
+    isAttributeValueQuoteChar(charCode) ||
+    isEndOfTagChar(charCode) ||
+    isTagStartBracket(charCode)
+  );
+
+const EXCLAMATION_PT = 33;
+
+/**
+ * @param {number} charCode
+ * @returns {boolean}
+ */
+export const isBang = (charCode) => charCode === EXCLAMATION_PT;
+
+const BACKSLASH = 92;
 
 /**
  * Count how many backslash escape characters precede the quote character.
@@ -232,18 +364,51 @@ export const isLegalUnquotedAttributeValueChar = (charCode) =>
  * "quote: \"" -> '"' is escaped, '"' is not"
  * "backslash: \\" -> '\' is escaped, '"' is not"
  * "backslash and quote: \\\"" -> '\' is escaped, '"' is escaped, final '"' is not
- * @param {string} precedingString - The string preceding the character which we are testing to see if it is escaped
+ * @param {number[]} precedingStringCharCodes - The string preceding the character which we are testing to see if it is escaped
  * @returns {boolean}
  */
-export const isNextCharEscapedByPrecedingString = (precedingString) => {
+export const isNextCharEscapedByPrecedingString = (
+  precedingStringCharCodes
+) => {
   let count = 0;
-  for (let i = precedingString.length - 1; i >= 0; i--) {
-    if (precedingString[i] === "\\") {
-      count++;
+  for (let i = precedingStringCharCodes.length - 1; i >= 0; i--) {
+    if (precedingStringCharCodes[i] === BACKSLASH) {
+      ++count;
     } else {
       break;
     }
   }
 
   return count % 2 !== 0;
+};
+
+/**
+ *
+ * @param {number[]} a
+ * @param {number[]} b
+ * @param {number} [aOffset=0]
+ * @param {number} [bOffset=0]
+ */
+export const doCodePointStringsMatch = (a, b, aOffset = 0, bOffset = 0) => {
+  const aLength = a.length;
+  const bLength = b.length;
+
+  if (aOffset < 0) {
+    aOffset = aLength + aOffset;
+  }
+  if (bOffset < 0) {
+    bOffset = bLength + bOffset;
+  }
+
+  if (aOffset < 0 || aOffset > aLength || bOffset < 0 || bOffset > bLength) {
+    return false;
+  }
+
+  for (let i = aOffset, j = bOffset; i < aLength && j < bLength; ++i, ++j) {
+    if (a[i] !== b[j]) {
+      return false;
+    }
+  }
+
+  return true;
 };

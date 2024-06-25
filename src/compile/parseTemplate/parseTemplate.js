@@ -50,32 +50,31 @@ export async function parseTemplate(filePath) {
   };
 
   /**
-   * @typedef {TmphElementNode & {
-   *  parent: OpenTmphElementNode | null
-   * }} OpenTmphElementNode
+   * @type {Map<TmphElementNode, TmphElementNode | null>}
    */
+  const nodeParentMap = new Map();
 
   /**
-   * @type {OpenTmphElementNode | null}
+   * @type {TmphElementNode | null}
+   */
+  let currentOpenRootElementNode = null;
+
+  /**
+   * @type {TmphElementNode | null}
    */
   let currentOpenLeafElementNode = null;
 
   for await (const token of lex(filePath)) {
-    if (token.type === LexerTokenType.EOF) {
-      if (currentOpenLeafElementNode !== null) {
-        let openRootNode = currentOpenLeafElementNode;
-        while (openRootNode.parent) {
-          openRootNode = openRootNode.parent;
-        }
-        const { parent, ...nodeWithoutParent } = openRootNode;
-        templateData.nodes.push(nodeWithoutParent);
-      }
-      break;
-    } else if (token.type === LexerTokenType.ERROR) {
-      return new Error(token.value);
-    }
-
     switch (token.type) {
+      case LexerTokenType.EOF: {
+        if (currentOpenRootElementNode !== null) {
+          templateData.nodes.push(currentOpenRootElementNode);
+        }
+        break;
+      }
+      case LexerTokenType.ERROR: {
+        return new Error(token.value);
+      }
       case LexerTokenType.TEXT_CONTENT: {
         if (!token.value) {
           break;
@@ -90,7 +89,7 @@ export async function parseTemplate(filePath) {
           c: token.c,
         };
         if (currentOpenLeafElementNode) {
-          (currentOpenLeafElementNode.children ?? []).push(textNode);
+          (currentOpenLeafElementNode.children ??= []).push(textNode);
         } else {
           // Append text node to the root if there's no open parent node
           templateData.nodes.push(textNode);
@@ -107,19 +106,26 @@ export async function parseTemplate(filePath) {
           c: token.c,
         };
 
-        if (currentOpenLeafElementNode) {
-          (currentOpenLeafElementNode.children ??= []).push(elementNode);
+        if (!currentOpenRootElementNode) {
+          currentOpenRootElementNode = currentOpenLeafElementNode = elementNode;
+          break;
         }
-        currentOpenLeafElementNode = {
-          ...elementNode,
-          parent: currentOpenLeafElementNode,
-        };
+
+        if (!currentOpenLeafElementNode) {
+          return new Error(
+            `${filePath}:${token.l}:${token.c} Encountered unexpected opening tag: ${token.value}`
+          );
+        }
+
+        (currentOpenLeafElementNode.children ??= []).push(elementNode);
+        nodeParentMap.set(elementNode, currentOpenLeafElementNode);
+        currentOpenLeafElementNode = elementNode;
         break;
       }
       case LexerTokenType.ATTRIBUTE_NAME: {
         if (currentOpenLeafElementNode) {
           (currentOpenLeafElementNode.attributes ??= []).push({
-            name: /** @type {string} */ (token.value),
+            name: token.value,
             l: token.l,
             c: token.c,
             value: "",
@@ -142,32 +148,40 @@ export async function parseTemplate(filePath) {
         }
         break;
       }
-      case LexerTokenType.CLOSING_TAG_END: {
+      case LexerTokenType.SELF_CLOSING_TAG_END: {
         if (!currentOpenLeafElementNode) {
           break;
         }
 
-        if (currentOpenLeafElementNode.parent) {
-          currentOpenLeafElementNode = currentOpenLeafElementNode.parent;
+        if (currentOpenLeafElementNode === currentOpenRootElementNode) {
+          templateData.nodes.push(currentOpenRootElementNode);
+          currentOpenRootElementNode = currentOpenLeafElementNode = null;
         } else {
-          const { parent, ...nodeWithoutParent } = currentOpenLeafElementNode;
-          templateData.nodes.push(nodeWithoutParent);
-          currentOpenLeafElementNode = null;
+          /** @type {TmphElementNode | null} */
+          const parentNode =
+            nodeParentMap.get(currentOpenLeafElementNode) ?? null;
+          nodeParentMap.delete(currentOpenLeafElementNode);
+
+          currentOpenLeafElementNode = parentNode;
         }
         break;
       }
       case LexerTokenType.CLOSING_TAGNAME: {
         const closedTagname = token.value;
 
-        let closedNode = /** @type {OpenTmphElementNode|null} */ (
-          currentOpenLeafElementNode
-        );
-
-        if (closedTagname === "body") {
-          debugger;
+        if (!currentOpenLeafElementNode) {
+          return new Error(
+            `${filePath}:${token.l}:${token.c} Encountered unexpected closing tag: ${closedTagname}`
+          );
         }
+
+        /**
+         * @type {TmphElementNode | null}
+         */
+        let closedNode = currentOpenLeafElementNode;
+
         while (closedNode && closedNode.tagName !== closedTagname) {
-          closedNode = closedNode.parent;
+          closedNode = nodeParentMap.get(closedNode) ?? null;
         }
 
         if (!closedNode) {
@@ -176,17 +190,20 @@ export async function parseTemplate(filePath) {
           );
         }
 
-        if (closedNode.parent) {
-          currentOpenLeafElementNode = closedNode.parent;
+        if (closedNode === currentOpenRootElementNode) {
+          templateData.nodes.push(closedNode);
+          currentOpenRootElementNode = currentOpenLeafElementNode = null;
         } else {
-          const { parent, ...nodeWithoutParent } = closedNode;
-          templateData.nodes.push(nodeWithoutParent);
-          currentOpenLeafElementNode = null;
+          currentOpenLeafElementNode = nodeParentMap.get(closedNode) ?? null;
         }
+
+        nodeParentMap.delete(closedNode);
         break;
       }
     }
   }
+
+  nodeParentMap.clear();
 
   return templateData;
 }
