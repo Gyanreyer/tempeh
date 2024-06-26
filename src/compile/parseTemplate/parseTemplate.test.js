@@ -57,8 +57,8 @@ describe("parseTemplate", () => {
           },
           {
             textContent: "\nSome root-level text\n",
-            l: 1,
-            c: 60,
+            l: 2,
+            c: 1,
           },
           {
             tagName: "button",
@@ -91,8 +91,8 @@ describe("parseTemplate", () => {
             children: [
               {
                 textContent: "\n  Click me\n  ",
-                l: 3,
-                c: 75,
+                l: 4,
+                c: 1,
               },
               {
                 tagName: "svg",
@@ -119,8 +119,8 @@ describe("parseTemplate", () => {
                 children: [
                   {
                     textContent: "\n    ",
-                    l: 5,
-                    c: 77,
+                    l: 6,
+                    c: 1,
                   },
                   {
                     tagName: "circle",
@@ -149,8 +149,8 @@ describe("parseTemplate", () => {
                   },
                   {
                     textContent: "\n  ",
-                    l: 6,
-                    c: 45,
+                    l: 7,
+                    c: 1,
                   },
                 ],
                 l: 5,
@@ -158,8 +158,8 @@ describe("parseTemplate", () => {
               },
               {
                 textContent: "\n",
-                l: 7,
-                c: 9,
+                l: 8,
+                c: 1,
               },
             ],
             l: 3,
@@ -167,8 +167,8 @@ describe("parseTemplate", () => {
           },
           {
             textContent: "\n",
-            l: 8,
-            c: 10,
+            l: 9,
+            c: 1,
           },
           {
             tagName: "p",
@@ -226,8 +226,8 @@ describe("parseTemplate", () => {
               },
               {
                 textContent: "\n",
-                l: 11,
-                c: 12,
+                l: 12,
+                c: 1,
               },
             ],
             l: 9,
@@ -235,8 +235,8 @@ describe("parseTemplate", () => {
           },
           {
             textContent: "\n",
-            l: 12,
-            c: 5,
+            l: 13,
+            c: 1,
           },
         ],
       })
@@ -263,8 +263,8 @@ describe("parseTemplate", () => {
           children: [
             {
               textContent: "\n  ",
-              l: 1,
-              c: 5,
+              l: 2,
+              c: 1,
             },
             {
               tagName: "ListItem",
@@ -293,22 +293,17 @@ describe("parseTemplate", () => {
             },
             {
               textContent: "\n",
-              l: 2,
-              c: 79,
+              l: 3,
+              c: 1,
             },
           ],
           l: 1,
           c: 2,
         },
         {
-          textContent: "\n",
-          l: 3,
-          c: 6,
-        },
-        {
-          textContent: "\n",
+          textContent: "\n\n",
           l: 4,
-          c: 40,
+          c: 1,
         },
         {
           tagName: "template",
@@ -329,16 +324,16 @@ describe("parseTemplate", () => {
           children: [
             {
               textContent: "\n  ",
-              l: 5,
-              c: 36,
+              l: 6,
+              c: 1,
             },
             {
               tagName: "li",
               children: [
                 {
                   textContent: "\n    ",
-                  l: 6,
-                  c: 7,
+                  l: 7,
+                  c: 1,
                 },
                 {
                   tagName: "strong",
@@ -355,8 +350,8 @@ describe("parseTemplate", () => {
                 },
                 {
                   textContent: "\n    ",
-                  l: 7,
-                  c: 41,
+                  l: 8,
+                  c: 1,
                 },
                 {
                   tagName: "slot",
@@ -365,8 +360,8 @@ describe("parseTemplate", () => {
                 },
                 {
                   textContent: "\n  ",
-                  l: 8,
-                  c: 18,
+                  l: 9,
+                  c: 1,
                 },
               ],
               l: 6,
@@ -374,8 +369,8 @@ describe("parseTemplate", () => {
             },
             {
               textContent: "\n",
-              l: 9,
-              c: 8,
+              l: 10,
+              c: 1,
             },
           ],
           l: 5,
@@ -383,8 +378,8 @@ describe("parseTemplate", () => {
         },
         {
           textContent: "\n",
-          l: 10,
-          c: 12,
+          l: 11,
+          c: 1,
         },
         {
           tagName: "template",
@@ -405,16 +400,16 @@ describe("parseTemplate", () => {
           children: [
             {
               textContent: "\n  ",
-              l: 11,
-              c: 43,
+              l: 12,
+              c: 1,
             },
             {
               tagName: "div",
               children: [
                 {
                   textContent: "\n    ",
-                  l: 12,
-                  c: 8,
+                  l: 13,
+                  c: 1,
                 },
                 {
                   tagName: "InnerComponent",
@@ -423,8 +418,8 @@ describe("parseTemplate", () => {
                 },
                 {
                   textContent: "\n    ",
-                  l: 13,
-                  c: 38,
+                  l: 14,
+                  c: 1,
                 },
                 {
                   tagName: "template",
@@ -445,8 +440,8 @@ describe("parseTemplate", () => {
                   children: [
                     {
                       textContent: "\n      ",
-                      l: 14,
-                      c: 47,
+                      l: 15,
+                      c: 1,
                     },
                     {
                       tagName: "slot",
@@ -463,8 +458,8 @@ describe("parseTemplate", () => {
                     },
                     {
                       textContent: "\n      ",
-                      l: 15,
-                      c: 34,
+                      l: 16,
+                      c: 1,
                     },
                     {
                       tagName: "div",
@@ -480,8 +475,8 @@ describe("parseTemplate", () => {
                     },
                     {
                       textContent: "\n      ",
-                      l: 16,
-                      c: 41,
+                      l: 17,
+                      c: 1,
                     },
                     {
                       tagName: "slot",
@@ -498,8 +493,8 @@ describe("parseTemplate", () => {
                     },
                     {
                       textContent: "\n    ",
-                      l: 17,
-                      c: 33,
+                      l: 18,
+                      c: 1,
                     },
                   ],
                   l: 14,
@@ -507,8 +502,8 @@ describe("parseTemplate", () => {
                 },
                 {
                   textContent: "\n  ",
-                  l: 18,
-                  c: 16,
+                  l: 19,
+                  c: 1,
                 },
               ],
               l: 12,
@@ -516,8 +511,8 @@ describe("parseTemplate", () => {
             },
             {
               textContent: "\n",
-              l: 19,
-              c: 9,
+              l: 20,
+              c: 1,
             },
           ],
           l: 11,
@@ -525,8 +520,8 @@ describe("parseTemplate", () => {
         },
         {
           textContent: "\n",
-          l: 20,
-          c: 12,
+          l: 21,
+          c: 1,
         },
       ],
     });
@@ -547,8 +542,8 @@ describe("parseTemplate", () => {
           children: [
             {
               textContent: "\n  ",
-              l: 1,
-              c: 7,
+              l: 2,
+              c: 1,
             },
             {
               tagName: "h1",
@@ -564,8 +559,8 @@ describe("parseTemplate", () => {
             },
             {
               textContent: "\n  ",
-              l: 2,
-              c: 19,
+              l: 3,
+              c: 1,
             },
             {
               tagName: "p",
@@ -581,8 +576,8 @@ describe("parseTemplate", () => {
             },
             {
               textContent: "\n",
-              l: 3,
-              c: 19,
+              l: 4,
+              c: 1,
             },
           ],
           l: 1,
@@ -590,8 +585,8 @@ describe("parseTemplate", () => {
         },
         {
           textContent: "\n",
-          l: 4,
-          c: 8,
+          l: 5,
+          c: 1,
         },
         {
           tagName: "style",
@@ -599,8 +594,8 @@ describe("parseTemplate", () => {
             {
               textContent:
                 "\n  @scope {\n    main {\n      font-size: 1.2em;\n    }\n\n    h1,\n    p {\n      margin: 0;\n    }\n  }\n",
-              l: 5,
-              c: 8,
+              l: 6,
+              c: 1,
             },
           ],
           l: 5,
@@ -608,8 +603,8 @@ describe("parseTemplate", () => {
         },
         {
           textContent: "\n",
-          l: 16,
-          c: 9,
+          l: 17,
+          c: 1,
         },
         {
           tagName: "style",
@@ -624,8 +619,8 @@ describe("parseTemplate", () => {
           children: [
             {
               textContent: "\n  :root {\n    --color: #333;\n  }\n",
-              l: 17,
-              c: 23,
+              l: 18,
+              c: 1,
             },
           ],
           l: 17,
@@ -633,8 +628,8 @@ describe("parseTemplate", () => {
         },
         {
           textContent: "\n",
-          l: 21,
-          c: 9,
+          l: 22,
+          c: 1,
         },
         {
           tagName: "style",
@@ -649,8 +644,8 @@ describe("parseTemplate", () => {
           children: [
             {
               textContent: "\n  main {\n    color: red;\n  }\n",
-              l: 22,
-              c: 13,
+              l: 23,
+              c: 1,
             },
           ],
           l: 22,
@@ -658,8 +653,8 @@ describe("parseTemplate", () => {
         },
         {
           textContent: "\n",
-          l: 26,
-          c: 9,
+          l: 27,
+          c: 1,
         },
       ],
     });
@@ -689,8 +684,8 @@ describe("parseTemplate", () => {
         },
         {
           textContent: "\n",
-          l: 1,
-          c: 27,
+          l: 2,
+          c: 1,
         },
         {
           tagName: "script",
@@ -706,8 +701,8 @@ describe("parseTemplate", () => {
             {
               textContent:
                 "\n  const observer = new IntersectionObserver((entries) => {\n    entries.forEach((entry) => {\n      if (entry.isIntersecting) {\n        entry.target.opacity = 1;\n      }\n    });\n  });\n",
-              l: 2,
-              c: 26,
+              l: 3,
+              c: 1,
             },
           ],
           l: 2,
@@ -715,8 +710,8 @@ describe("parseTemplate", () => {
         },
         {
           textContent: "\n",
-          l: 10,
-          c: 10,
+          l: 11,
+          c: 1,
         },
         {
           tagName: "script",
@@ -732,8 +727,8 @@ describe("parseTemplate", () => {
             {
               textContent:
                 '\n  this.addEventListener("click", () => console.log("You clicked me!"));\n\n  observer.observe(this);\n',
-              l: 11,
-              c: 25,
+              l: 12,
+              c: 1,
             },
           ],
           l: 11,
@@ -741,16 +736,16 @@ describe("parseTemplate", () => {
         },
         {
           textContent: "\n",
-          l: 15,
-          c: 10,
+          l: 16,
+          c: 1,
         },
         {
           tagName: "script",
           children: [
             {
               textContent: '\n  console.log("This is a global script!");\n',
-              l: 16,
-              c: 9,
+              l: 17,
+              c: 1,
             },
           ],
           l: 16,
@@ -758,8 +753,8 @@ describe("parseTemplate", () => {
         },
         {
           textContent: "\n",
-          l: 18,
-          c: 10,
+          l: 19,
+          c: 1,
         },
         {
           tagName: "script",
@@ -781,8 +776,8 @@ describe("parseTemplate", () => {
             {
               textContent:
                 "\n  export const num = Math.random();\n  export function render() {\n    return `<button>\\`Click me!\\`</button>`;\n  }\n",
-              l: 19,
-              c: 40,
+              l: 20,
+              c: 1,
             },
           ],
           l: 19,
@@ -790,8 +785,8 @@ describe("parseTemplate", () => {
         },
         {
           textContent: "\n",
-          l: 24,
-          c: 10,
+          l: 25,
+          c: 1,
         },
         {
           tagName: "script",
@@ -808,8 +803,8 @@ describe("parseTemplate", () => {
         },
         {
           textContent: "\n",
-          l: 25,
-          c: 35,
+          l: 26,
+          c: 1,
         },
       ],
     });
@@ -845,16 +840,16 @@ describe("parseTemplate", () => {
             children: [
               {
                 textContent: "\n  ",
-                l: 2,
-                c: 17,
+                l: 3,
+                c: 1,
               },
               {
                 tagName: "head",
                 children: [
                   {
                     textContent: "\n    ",
-                    l: 3,
-                    c: 9,
+                    l: 4,
+                    c: 1,
                   },
                   {
                     tagName: "meta",
@@ -871,8 +866,8 @@ describe("parseTemplate", () => {
                   },
                   {
                     textContent: "\n    ",
-                    l: 4,
-                    c: 29,
+                    l: 5,
+                    c: 1,
                   },
                   {
                     tagName: "meta",
@@ -895,8 +890,8 @@ describe("parseTemplate", () => {
                   },
                   {
                     textContent: "\n  ",
-                    l: 5,
-                    c: 58,
+                    l: 6,
+                    c: 1,
                   },
                 ],
                 l: 3,
@@ -904,16 +899,16 @@ describe("parseTemplate", () => {
               },
               {
                 textContent: "\n  ",
-                l: 6,
-                c: 10,
+                l: 7,
+                c: 1,
               },
               {
                 tagName: "body",
                 children: [
                   {
                     textContent: "\n    ",
-                    l: 7,
-                    c: 9,
+                    l: 8,
+                    c: 1,
                   },
                   {
                     tagName: "slot",
@@ -922,8 +917,8 @@ describe("parseTemplate", () => {
                   },
                   {
                     textContent: "\n  ",
-                    l: 8,
-                    c: 18,
+                    l: 9,
+                    c: 1,
                   },
                 ],
                 l: 7,
@@ -931,8 +926,8 @@ describe("parseTemplate", () => {
               },
               {
                 textContent: "\n",
-                l: 9,
-                c: 10,
+                l: 10,
+                c: 1,
               },
             ],
             l: 2,
@@ -940,8 +935,8 @@ describe("parseTemplate", () => {
           },
           {
             textContent: "\n",
-            l: 10,
-            c: 8,
+            l: 11,
+            c: 1,
           },
         ],
       })
@@ -968,8 +963,8 @@ describe("parseTemplate", () => {
               {
                 textContent:
                   "\n  This is a valid web 🕸️ component name. At least, according to spec 🤷",
-                l: 1,
-                c: 8,
+                l: 2,
+                c: 1,
               },
               {
                 tagName: "br",
@@ -978,8 +973,8 @@ describe("parseTemplate", () => {
               },
               {
                 textContent: "\n  Check this out: 𐐷𝄞ЦѾئሐᏠ",
-                l: 2,
-                c: 77,
+                l: 3,
+                c: 1,
               },
               {
                 tagName: "br",
@@ -988,15 +983,37 @@ describe("parseTemplate", () => {
               },
               {
                 textContent: "\n  Just flexing my unicode muscles 💪\n",
-                l: 3,
-                c: 32,
+                l: 4,
+                c: 1,
               },
             ],
           },
           {
             textContent: "\n",
-            l: 5,
-            c: 9,
+            l: 6,
+            c: 1,
+          },
+        ],
+      })
+    );
+  });
+
+  test("should parse an un-terminated opening tag as text content", async () => {
+    const templateSourceFilePath = resolveRelativePath(
+      "../../../test/fixtures/incompleteElement.tmph.html",
+      import.meta
+    );
+    const parsedTemplateData = await parseTemplate(templateSourceFilePath);
+
+    assert.deepStrictEqual(
+      parsedTemplateData,
+      /** @satisfies {TemplateDataAST} */ ({
+        src: templateSourceFilePath,
+        nodes: [
+          {
+            textContent: '\nCheck this out: <a href="',
+            l: 2,
+            c: 1,
           },
         ],
       })

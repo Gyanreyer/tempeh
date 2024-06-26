@@ -89,10 +89,21 @@ export async function parseTemplate(filePath) {
           c: token.c,
         };
         if (currentOpenLeafElementNode) {
-          (currentOpenLeafElementNode.children ??= []).push(textNode);
+          const previousNode = currentOpenLeafElementNode.children?.at(-1);
+          if (previousNode && "textContent" in previousNode) {
+            previousNode.textContent += textNode.textContent;
+          } else {
+            (currentOpenLeafElementNode.children ??= []).push(textNode);
+          }
         } else {
-          // Append text node to the root if there's no open parent node
-          templateData.nodes.push(textNode);
+          const previousNode = templateData.nodes.at(-1);
+          if (previousNode && "textContent" in previousNode) {
+            // Merge into the previous text node if it exists
+            previousNode.textContent += textNode.textContent;
+          } else {
+            // Append text node to the root if there's no open parent node
+            templateData.nodes.push(textNode);
+          }
         }
         break;
       }
