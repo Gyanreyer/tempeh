@@ -1,12 +1,8 @@
-import { test, describe, after, before } from "node:test";
+import { test, describe, after } from "node:test";
 import * as assert from "node:assert";
 
 import { resolveRelativePath } from "../../utils/resolveRelativePath.js";
-import { parseTemplate } from "./parseTemplate.js";
-import {
-  startTemplateParserServer,
-  stopTemplateParserServer,
-} from "./templateParserServer.js";
+import { cleanupWorkers, parseTemplate } from "./parseTemplate.js";
 import { writeFileSync } from "node:fs";
 
 /**
@@ -14,12 +10,8 @@ import { writeFileSync } from "node:fs";
  */
 
 describe("parseTemplate", () => {
-  before(async () => {
-    await startTemplateParserServer();
-  });
-
   after(() => {
-    stopTemplateParserServer();
+    cleanupWorkers();
   });
 
   test("should parse a simple component file as expected", async () => {
