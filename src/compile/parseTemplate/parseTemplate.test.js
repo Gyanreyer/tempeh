@@ -2,7 +2,7 @@ import { test, describe, after } from "node:test";
 import * as assert from "node:assert";
 
 import { resolveRelativePath } from "../../utils/resolveRelativePath.js";
-import { cleanupWorkers, parseTemplate } from "./parseTemplate.js";
+import { parseTemplate } from "./parseTemplate.js";
 import { writeFileSync } from "node:fs";
 
 /**
@@ -10,10 +10,6 @@ import { writeFileSync } from "node:fs";
  */
 
 describe("parseTemplate", () => {
-  after(() => {
-    cleanupWorkers();
-  });
-
   test("should parse a simple component file as expected", async () => {
     const templateSourceFilePath = resolveRelativePath(
       "../../../test/fixtures/simpleComponent.tmph.html",

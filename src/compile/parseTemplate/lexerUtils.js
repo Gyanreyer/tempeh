@@ -42,56 +42,6 @@ export const asCodePointString = (str) => {
   return codePoints;
 };
 
-/**
- * Takes a Uint8Array of UTF-8 encoded text and returns an array of code points
- * @param {Uint8Array} bufferView
- * @returns {number[] | Error}
- */
-export const getCodePointsFromUTF8BufferView = (bufferView) => {
-  /**
-   * @type {number[]}
-   */
-  const codePoints = new Array(bufferView.length);
-  let codePointIndex = 0;
-
-  for (
-    let byteReadIndex = 0, bufferLen = bufferView.length;
-    byteReadIndex < bufferLen;
-    ++byteReadIndex, ++codePointIndex
-  ) {
-    const firstByte = bufferView[byteReadIndex];
-
-    if (firstByte < 0x80) {
-      // 1-byte sequence
-      codePoints[codePointIndex] = firstByte;
-    } else if (firstByte >= 0xc0 && firstByte <= 0xdf) {
-      // 2-byte sequence
-      codePoints[codePointIndex] =
-        ((firstByte & 0x1f) << 6) | (bufferView[++byteReadIndex] & 0x3f);
-    } else if (firstByte >= 0xe0 && firstByte <= 0xef) {
-      // 3-byte sequence
-      codePoints[codePointIndex] =
-        ((firstByte & 0x0f) << 12) |
-        ((bufferView[++byteReadIndex] & 0x3f) << 6) |
-        (bufferView[++byteReadIndex] & 0x3f);
-    } else if (firstByte >= 0xf0 && firstByte <= 0xf7) {
-      // 4-byte sequence
-      codePoints[codePointIndex] =
-        ((firstByte & 0x07) << 18) |
-        ((bufferView[++byteReadIndex] & 0x3f) << 12) |
-        ((bufferView[++byteReadIndex] & 0x3f) << 6) |
-        (bufferView[++byteReadIndex] & 0x3f);
-    } else {
-      return new Error(`Invalid UTF-8 leading byte: ${firstByte}`);
-    }
-  }
-
-  // Trim off any unused array slots due to multi-byte code points
-  codePoints.length = codePointIndex;
-
-  return codePoints;
-};
-
 const LOWER_A = 97;
 const LOWER_Z = 122;
 const UPPER_A = 65;

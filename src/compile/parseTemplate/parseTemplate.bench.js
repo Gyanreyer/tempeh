@@ -3,7 +3,7 @@ import { promises } from "node:fs";
 //   startTemplateParserServer,
 //   stopTemplateParserServer,
 // } from "./templateParserServer.js";
-import { cleanupWorkers, parseTemplate } from "./parseTemplate.js";
+import { parseTemplate } from "./parseTemplate.js";
 import { resolveRelativePath } from "../../utils/resolveRelativePath.js";
 import path from "node:path";
 import os from "node:os";
@@ -19,21 +19,25 @@ const testFixtureFilePaths = await promises
     fileNames.map((fileName) => path.join(fixturesDirPath, fileName))
   );
 
-const totalMemory = os.totalmem();
+const totalMemory = os.totalmem() >> 10;
 
-const initialMemoryUse = totalMemory - os.freemem();
+const initialMemoryUse = totalMemory - (os.freemem() >> 10);
 
 /**
  *
  * @param {string} context
  */
-// const logMemoryUsage = (context) => {
-//   console.log(
-//     `Memory used (${context}): ${
-//       (totalMemory - os.freemem() - initialMemoryUse) >> 20
-//     }MB`
-//   );
-// };
+const logMemoryUsage = (context) => {
+  console.log(
+    `Memory used (${context}): ${
+      totalMemory - (os.freemem() >> 10) - initialMemoryUse
+    }KB`
+  );
+};
+let memoryCheckID = setImmediate(function checkMemLoop() {
+  logMemoryUsage("interval");
+  memoryCheckID = setImmediate(checkMemLoop);
+});
 
 // const startTemplateParserServerStartTime = performance.now();
 // const parserServerOrigin = await startTemplateParserServer();
@@ -50,28 +54,22 @@ const initialMemoryUse = totalMemory - os.freemem();
 
 // logMemoryUsage("after starting server");
 
-// let memoryCheckID = setImmediate(function checkMemLoop() {
-//   // logMemoryUsage("interval");
-//   memoryCheckID = setImmediate(checkMemLoop);
-// });
-
 // const timings = new Map();
 
 const parseAllTemplatesStartTime = performance.now();
-await Promise.all(
-  testFixtureFilePaths.map(async (filePath) => {
-    const startTime = performance.now();
-    await parseTemplate(filePath);
-    const parseTemplateEndTime = performance.now();
-    console.log(
-      `parseTemplate(${filePath}): ${parseTemplateEndTime - startTime}ms`
-    );
-    // timings.set(filePath, parseTemplateEndTime - startTime);
-  })
-);
-
-// clearImmediate(memoryCheckID);
-// logMemoryUsage("after parsing");
+for (const filePath of testFixtureFilePaths) {
+  // await Promise.all(
+  //   testFixtureFilePaths.map(async (filePath) => {
+  // const startTime = performance.now();
+  await parseTemplate(filePath);
+  // const parseTemplateEndTime = performance.now();
+  // console.log(
+  //   `parseTemplate(${filePath}): ${parseTemplateEndTime - startTime}ms`
+  // );
+  // timings.set(filePath, parseTemplateEndTime - startTime);
+  //   })
+  // );
+}
 
 // console.log("Individual parseTemplate timings", timings);
 const parseAllTemplatesEndTime = performance.now();
@@ -85,8 +83,9 @@ console.log(
   }ms`
 );
 
-cleanupWorkers();
+// cleanupWorkers();
 
 // stopTemplateParserServer();
 
-// logMemoryUsage("after stopping server");
+clearImmediate(memoryCheckID);
+logMemoryUsage("after parsing");
