@@ -1,16 +1,10 @@
 import { createReadStream } from "fs";
 import {
+  BACK_SLASH,
   FWD_SLASH,
-  LT,
-  asCodePointString,
-  doCodePointStringsMatch,
-  isAttributeEqualsChar,
+  CLOSING_ANGLE_BRACKET,
+  OPENING_ANGLE_BRACKET,
   isAttributeValueQuoteChar,
-  isBackSlash,
-  isBang,
-  isEndOfTagChar,
-  isForwardSlash,
-  isHyphen,
   isLegalAttributeNameChar,
   isLegalLeadingTagNameChar,
   isLegalTagNameChar,
@@ -19,10 +13,11 @@ import {
   isRawTextContentElementTagname,
   isScriptQuoteChar,
   isStyleQuoteChar,
-  isTagEndBracket,
-  isTagStartBracket,
   isVoidElementTagname,
   isWhitespace,
+  EXCLAMATION_PT,
+  HYPHEN,
+  EQUALS,
 } from "./lexerUtils.js";
 
 /**
@@ -409,7 +404,7 @@ async function* lexTextContent(pullChar, unreadChar) {
     if (isLegalLeadingTagNameChar(nextCharCode)) {
       if (
         textContentLength > 0 &&
-        isTagStartBracket(textContentCodes[textContentLength - 1])
+        textContentCodes[textContentLength - 1] === OPENING_ANGLE_BRACKET
       ) {
         // Splice off the "<" character we buffered before the tag name
         --textContentCodes.length;
@@ -429,8 +424,9 @@ async function* lexTextContent(pullChar, unreadChar) {
         return lexOpeningTagContents(pullChar, unreadChar);
       } else if (
         textContentLength >= 2 &&
-        isTagStartBracket(textContentCodes[textContentLength - 2]) &&
-        isForwardSlash(textContentCodes[textContentLength - 1])
+        // Test that the last 2 characters are "</"
+        textContentCodes[textContentLength - 2] === OPENING_ANGLE_BRACKET &&
+        textContentCodes[textContentLength - 1] === FWD_SLASH
       ) {
         textContentCodes.length -= 2;
 
@@ -448,14 +444,14 @@ async function* lexTextContent(pullChar, unreadChar) {
         };
         return lexClosingTagName(pullChar, unreadChar);
       }
-    } else if (isHyphen(nextCharCode)) {
+    } else if (nextCharCode === HYPHEN) {
       // Test if we're starting a comment tag
       if (
         textContentLength >= 3 &&
         // If the last 3 characters are "<!-" and the next char is "-", we've got a comment tag
-        isTagStartBracket(textContentCodes[textContentLength - 3]) &&
-        isBang(textContentCodes[textContentLength - 2]) &&
-        isHyphen(textContentCodes[textContentLength - 1])
+        textContentCodes[textContentLength - 3] === OPENING_ANGLE_BRACKET &&
+        textContentCodes[textContentLength - 2] === EXCLAMATION_PT &&
+        textContentCodes[textContentLength - 1] === HYPHEN
       ) {
         textContentCodes.length -= 3;
         yield {
@@ -540,7 +536,7 @@ async function* lexOpeningTagContents(basePullChar, baseUnreadChar) {
    */
   let rawOpeningTagContentCodePointStr = [
     // We can assume the first character is "<" since that is the only way we could have gotten here.
-    LT,
+    OPENING_ANGLE_BRACKET,
   ];
 
   /**
@@ -650,13 +646,13 @@ async function* lexOpeningTagContents(basePullChar, baseUnreadChar) {
 
     if (!isWhitespace(nextCharCode)) {
       // We hit the end of the opening tag! Now we need to figure out what to do next.
-      if (isTagEndBracket(nextCharCode)) {
+      if (nextCharCode === CLOSING_ANGLE_BRACKET) {
         // Yield all the tokens we've collected so far for the opening tag
         yield* openingTagContentTokens;
 
         // If this is a void tag or the tag was terminated with "/>", consider it a
         // self-closing tag with no content.
-        if (isVoidTag || (prevCharCode && isForwardSlash(prevCharCode))) {
+        if (isVoidTag || prevCharCode === FWD_SLASH) {
           yield {
             type: LexerTokenType.SELF_CLOSING_TAG_END,
             l: nextLine,
@@ -669,11 +665,7 @@ async function* lexOpeningTagContents(basePullChar, baseUnreadChar) {
         // If this is a raw text content element,
         // we need to read the raw content inside the element.
         if (isRawTextContentElementTagname(tagname)) {
-          return lexRawElementContent(
-            basePullChar,
-            baseUnreadChar,
-            asCodePointString(tagname)
-          );
+          return lexRawElementContent(basePullChar, baseUnreadChar, tagname);
         }
 
         // This is just the end of the opening tag, we don't have any tokens to emit.
@@ -742,7 +734,7 @@ async function* lexOpeningTagAttribute(pullChar, unreadChar) {
     return null;
   }
 
-  if (isAttributeEqualsChar(attributeNameTerminatorCharCode)) {
+  if (attributeNameTerminatorCharCode === EQUALS) {
     // Looks like this attribute has a value. We need to determine if the value is quoted or not.
     const {
       ch: quoteOrAttributeValueCharCode,
@@ -888,7 +880,7 @@ async function* lexOpeningTagQuotedAttributeValue(pullChar, unreadChar) {
       continue;
     }
 
-    if (isBackSlash(nextCharCode) && !isNextCharEscaped) {
+    if (nextCharCode === BACK_SLASH && !isNextCharEscaped) {
       // If we encountered an unescaped backslash, that means the next
       // character is escaped; don't include this escaping backslash in the attribute value.
       isNextCharEscaped = true;
@@ -1060,7 +1052,7 @@ async function* lexClosingTagEnd(pullChar, unreadChar) {
       startColumn = nextCol;
     }
 
-    if (isTagEndBracket(nextCharCode)) {
+    if (nextCharCode === CLOSING_ANGLE_BRACKET) {
       return lexTextContent(pullChar, unreadChar);
     }
   }
@@ -1108,9 +1100,10 @@ async function* lexCommentTag(pullChar, unreadChar) {
     const commentContentLength = commentContentCodePointStr.length;
 
     if (
-      isEndOfTagChar(nextCharCode) &&
-      isHyphen(commentContentCodePointStr[commentContentLength - 1]) &&
-      isHyphen(commentContentCodePointStr[commentContentLength - 2])
+      // Test that the last 3 chars are "-->" to close the comment tag
+      nextCharCode === CLOSING_ANGLE_BRACKET &&
+      commentContentCodePointStr[commentContentLength - 1] === HYPHEN &&
+      commentContentCodePointStr[commentContentLength - 2] === HYPHEN
     ) {
       commentContentCodePointStr.length -= 2;
 
@@ -1127,22 +1120,15 @@ async function* lexCommentTag(pullChar, unreadChar) {
   }
 }
 
-const SCRIPT_CODE_POINT_STRING = asCodePointString("script");
-const STYLE_CODE_POINT_STRING = asCodePointString("style");
-
 /**
  * Read the raw contents of a script or style tag until the closing tag is encountered.
  *
  * @param {PullCharFn} pullChar
  * @param {UnreadCharFn} unreadChar
- * @param {number[]} elementTagNameCodeString
+ * @param {string} elementTagName
  * @returns {LexerStateGenerator<"EOF" | "ERROR" | "TEXT_CONTENT" | "CLOSING_TAGNAME">}
  */
-async function* lexRawElementContent(
-  pullChar,
-  unreadChar,
-  elementTagNameCodeString
-) {
+async function* lexRawElementContent(pullChar, unreadChar, elementTagName) {
   /**
    * @type {number|null}
    */
@@ -1157,22 +1143,10 @@ async function* lexRawElementContent(
    */
   const rawContentCharCodes = [];
 
-  const closingTagnameMatchString = [
-    // "<"
-    LT,
-    // "/"
-    FWD_SLASH,
-    ...elementTagNameCodeString,
-  ];
+  const closingTagnameMatchString = `</${elementTagName}`;
 
-  const isScript = doCodePointStringsMatch(
-    elementTagNameCodeString,
-    SCRIPT_CODE_POINT_STRING
-  );
-  const isStyle = doCodePointStringsMatch(
-    elementTagNameCodeString,
-    STYLE_CODE_POINT_STRING
-  );
+  const isScript = elementTagName === "script";
+  const isStyle = elementTagName === "style";
 
   /**
    * @type {number | null}
@@ -1200,7 +1174,7 @@ async function* lexRawElementContent(
     }
 
     if (unterminatedQuoteCharCode !== null) {
-      if (isBackSlash(nextCharCode) && !isNextQuoteCharEscaped) {
+      if (nextCharCode === BACK_SLASH && !isNextQuoteCharEscaped) {
         isNextQuoteCharEscaped = true;
       } else if (
         nextCharCode === unterminatedQuoteCharCode &&
@@ -1219,11 +1193,10 @@ async function* lexRawElementContent(
       unterminatedQuoteCharCode = nextCharCode;
     } else if (
       !isLegalTagNameChar(nextCharCode) &&
-      doCodePointStringsMatch(
-        rawContentCharCodes,
-        closingTagnameMatchString,
-        -closingTagnameMatchString.length
-      )
+      rawContentCharCodes.length >= closingTagnameMatchString.length &&
+      String.fromCodePoint(
+        ...rawContentCharCodes.slice(-closingTagnameMatchString.length)
+      ) === closingTagnameMatchString
     ) {
       const unreadErrToken = unreadChar();
       if (unreadErrToken) {
@@ -1241,7 +1214,7 @@ async function* lexRawElementContent(
       };
       yield {
         type: LexerTokenType.CLOSING_TAGNAME,
-        value: String.fromCodePoint(...elementTagNameCodeString),
+        value: elementTagName,
         l: nextLine,
         c: nextCol - closingTagnameMatchStringLength,
       };

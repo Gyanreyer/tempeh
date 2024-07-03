@@ -56,32 +56,33 @@ const testFixtureFilePaths = await promises
 
 // const timings = new Map();
 
-const parseAllTemplatesStartTime = performance.now();
+// const parseAllTemplatesStartTime = performance.now();
+
+let averageTimings = 0;
+
 for (const filePath of testFixtureFilePaths) {
   const runCount = Math.round(5 + Math.random() * 10);
   let totalTime = 0;
   for (let i = 0; i < runCount; ++i) {
-    // await Promise.all(
-    //   testFixtureFilePaths.map(async (filePath) => {
     const startTime = performance.now();
     await parseTemplate(filePath);
     const parseTemplateEndTime = performance.now();
     totalTime += parseTemplateEndTime - startTime;
   }
 
+  const averageTime = totalTime / runCount;
+  averageTimings += averageTime;
+
   console.log(
-    `Average time for ${runCount} runs parsing ${filePath}: ${
-      totalTime / runCount
-    }ms`
+    `Average time for ${runCount} runs parsing ${filePath}: ${averageTime}ms`
   );
-  // const parseTemplateEndTime = performance.now();
-  // console.log(
-  //   `parseTemplate(${filePath}): ${parseTemplateEndTime - startTime}ms`
-  // );
-  // timings.set(filePath, parseTemplateEndTime - startTime);
-  //   })
-  // );
 }
+
+console.log(
+  `\nAverage time for all templates: ${
+    averageTimings / testFixtureFilePaths.length
+  }ms`
+);
 
 // console.log("Individual parseTemplate timings", timings);
 // const parseAllTemplatesEndTime = performance.now();

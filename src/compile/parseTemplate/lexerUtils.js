@@ -1,47 +1,3 @@
-/**
- * @param {string} char
- * @returns {number}
- */
-export const asCharCode = (char) =>
-  /** @type {number} **/ (char.codePointAt(0));
-
-const _32BitIntMask = 0xff0000;
-/**
- * @param {number} codePoint
- * @returns {boolean}
- */
-const is32BitInt = (codePoint) => (codePoint & _32BitIntMask) > 0;
-
-/**
- * @param {string} str
- * @returns {number[]}
- */
-export const asCodePointString = (str) => {
-  const strLen = str.length;
-  const codePoints = new Array(str.length);
-
-  for (
-    let strIndex = 0, codeIndex = 0;
-    strIndex < strLen;
-    ++strIndex, ++codeIndex
-  ) {
-    const codePoint = str.codePointAt(strIndex);
-    if (codePoint === undefined) {
-      break;
-    }
-
-    codePoints[codeIndex] = codePoint;
-    if (is32BitInt(codePoint)) {
-      // Strings are indexed by 16-bit code units, so if we just got a 32-bit code point,
-      // we need to skip the next code unit
-      ++strIndex;
-      --codePoints.length;
-    }
-  }
-
-  return codePoints;
-};
-
 const LOWER_A = 97;
 const LOWER_Z = 122;
 const UPPER_A = 65;
@@ -94,15 +50,9 @@ const NINE = 57;
  */
 export const isNumber = (charCode) => charCode >= ONE && charCode <= NINE;
 
-const HYPHEN = 45;
+export const HYPHEN = 45;
 const PERIOD = 46;
 const COLON = 58;
-
-/**
- * @param {number} charCode
- * @returns {boolean}
- */
-export const isHyphen = (charCode) => charCode === HYPHEN;
 
 /**
  * @param {number} charCode
@@ -235,51 +185,17 @@ export const isVoidElementTagname = (tagName) =>
 export const isAttributeValueQuoteChar = (charCode) =>
   charCode === SINGLE_QUOTE || charCode === DOUBLE_QUOTE;
 
-export const LT = 60;
-export const GT = 62;
+// "<"
+export const OPENING_ANGLE_BRACKET = 60;
+// ">"
+export const CLOSING_ANGLE_BRACKET = 62;
 
-/**
- * @param {number} charCode
- * @returns {boolean}
- */
-export const isTagStartBracket = (charCode) => charCode === LT;
-/**
- *
- * @param {number} charCode
- * @returns {boolean}
- */
-export const isTagEndBracket = (charCode) => charCode === GT;
-
+// "/"
 export const FWD_SLASH = 47;
+// "\"
 export const BACK_SLASH = 92;
 
-/**
- * @param {number} charCode
- * @returns {boolean}
- */
-export const isForwardSlash = (charCode) => charCode === FWD_SLASH;
-
-/**
- *
- * @param {number} charCode
- * @returns {boolean}
- */
-export const isBackSlash = (charCode) => charCode === BACK_SLASH;
-
-/**
- * @param {number} charCode
- * @returns {boolean}
- */
-export const isEndOfTagChar = (charCode) =>
-  charCode === GT || charCode === FWD_SLASH;
-
-const EQUALS = 61;
-
-/**
- * @param {number} charCode
- * @returns {boolean}
- */
-export const isAttributeEqualsChar = (charCode) => charCode === EQUALS;
+export const EQUALS = 61;
 
 /**
  * @param {number} charCode
@@ -287,9 +203,10 @@ export const isAttributeEqualsChar = (charCode) => charCode === EQUALS;
  */
 export const isLegalAttributeNameChar = (charCode) =>
   !(
-    isAttributeEqualsChar(charCode) ||
+    charCode === EQUALS ||
+    charCode === CLOSING_ANGLE_BRACKET ||
+    charCode === FWD_SLASH ||
     isWhitespace(charCode) ||
-    isEndOfTagChar(charCode) ||
     isAttributeValueQuoteChar(charCode)
   );
 
@@ -301,45 +218,8 @@ export const isLegalUnquotedAttributeValueChar = (charCode) =>
   !(
     isWhitespace(charCode) ||
     isAttributeValueQuoteChar(charCode) ||
-    isEndOfTagChar(charCode) ||
-    isTagStartBracket(charCode)
+    charCode === CLOSING_ANGLE_BRACKET ||
+    charCode === OPENING_ANGLE_BRACKET
   );
 
-const EXCLAMATION_PT = 33;
-
-/**
- * @param {number} charCode
- * @returns {boolean}
- */
-export const isBang = (charCode) => charCode === EXCLAMATION_PT;
-
-/**
- *
- * @param {number[]} a
- * @param {number[]} b
- * @param {number} [aOffset=0]
- * @param {number} [bOffset=0]
- */
-export const doCodePointStringsMatch = (a, b, aOffset = 0, bOffset = 0) => {
-  const aLength = a.length;
-  const bLength = b.length;
-
-  if (aOffset < 0) {
-    aOffset = aLength + aOffset;
-  }
-  if (bOffset < 0) {
-    bOffset = bLength + bOffset;
-  }
-
-  if (aOffset < 0 || aOffset > aLength || bOffset < 0 || bOffset > bLength) {
-    return false;
-  }
-
-  for (let i = aOffset, j = bOffset; i < aLength && j < bLength; ++i, ++j) {
-    if (a[i] !== b[j]) {
-      return false;
-    }
-  }
-
-  return true;
-};
+export const EXCLAMATION_PT = 33;
