@@ -251,12 +251,20 @@ export const isTagStartBracket = (charCode) => charCode === LT;
 export const isTagEndBracket = (charCode) => charCode === GT;
 
 export const FWD_SLASH = 47;
+export const BACK_SLASH = 92;
 
 /**
  * @param {number} charCode
  * @returns {boolean}
  */
 export const isForwardSlash = (charCode) => charCode === FWD_SLASH;
+
+/**
+ *
+ * @param {number} charCode
+ * @returns {boolean}
+ */
+export const isBackSlash = (charCode) => charCode === BACK_SLASH;
 
 /**
  * @param {number} charCode
@@ -304,33 +312,6 @@ const EXCLAMATION_PT = 33;
  * @returns {boolean}
  */
 export const isBang = (charCode) => charCode === EXCLAMATION_PT;
-
-const BACKSLASH = 92;
-
-/**
- * Count how many backslash escape characters precede the quote character.
- * If the count is even, the quote character is not escaped and is the closing quote character.
- * Examples:
- * "quote: \"" -> '"' is escaped, '"' is not"
- * "backslash: \\" -> '\' is escaped, '"' is not"
- * "backslash and quote: \\\"" -> '\' is escaped, '"' is escaped, final '"' is not
- * @param {number[]} precedingStringCharCodes - The string preceding the character which we are testing to see if it is escaped
- * @returns {boolean}
- */
-export const isNextCharEscapedByPrecedingString = (
-  precedingStringCharCodes
-) => {
-  let count = 0;
-  for (let i = precedingStringCharCodes.length - 1; i >= 0; i--) {
-    if (precedingStringCharCodes[i] === BACKSLASH) {
-      ++count;
-    } else {
-      break;
-    }
-  }
-
-  return count % 2 !== 0;
-};
 
 /**
  *

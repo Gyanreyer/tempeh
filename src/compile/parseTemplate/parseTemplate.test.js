@@ -759,6 +759,12 @@ describe("parseTemplate", () => {
               l: 19,
               c: 17,
             },
+            {
+              name: "#",
+              value: 'here are some escaped "quotes"',
+              l: 19,
+              c: 40,
+            },
           ],
           children: [
             {

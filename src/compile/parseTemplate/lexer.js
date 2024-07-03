@@ -6,6 +6,7 @@ import {
   doCodePointStringsMatch,
   isAttributeEqualsChar,
   isAttributeValueQuoteChar,
+  isBackSlash,
   isBang,
   isEndOfTagChar,
   isForwardSlash,
@@ -15,7 +16,6 @@ import {
   isLegalTagNameChar,
   isLegalUnquotedAttributeValueChar,
   isLineBreak,
-  isNextCharEscapedByPrecedingString,
   isRawTextContentElementTagname,
   isScriptQuoteChar,
   isStyleQuoteChar,
@@ -856,6 +856,8 @@ async function* lexOpeningTagQuotedAttributeValue(pullChar, unreadChar) {
    */
   let quoteCharCode = null;
 
+  let isNextCharEscaped = false;
+
   /**
    * @type {number|null}
    */
@@ -886,10 +888,13 @@ async function* lexOpeningTagQuotedAttributeValue(pullChar, unreadChar) {
       continue;
     }
 
-    if (
-      nextCharCode === quoteCharCode &&
-      !isNextCharEscapedByPrecedingString(attributeValueCodePointString)
-    ) {
+    if (isBackSlash(nextCharCode) && !isNextCharEscaped) {
+      // If we encountered an unescaped backslash, that means the next
+      // character is escaped; don't include this escaping backslash in the attribute value.
+      isNextCharEscaped = true;
+    } else if (nextCharCode === quoteCharCode && !isNextCharEscaped) {
+      // If the next char is a matching closing quote and isn't escaped,
+      // we've reached the end of the attribute value.
       const unreadErrToken = unreadChar();
       if (unreadErrToken) {
         yield unreadErrToken;
@@ -903,9 +908,10 @@ async function* lexOpeningTagQuotedAttributeValue(pullChar, unreadChar) {
         c: startColumn,
       };
       return null;
+    } else {
+      attributeValueCodePointString.push(nextCharCode);
+      isNextCharEscaped = false;
     }
-
-    attributeValueCodePointString.push(nextCharCode);
   }
 }
 
@@ -1173,6 +1179,8 @@ async function* lexRawElementContent(
    */
   let unterminatedQuoteCharCode = null;
 
+  let isNextQuoteCharEscaped = false;
+
   while (true) {
     const {
       ch: nextCharCode,
@@ -1192,11 +1200,17 @@ async function* lexRawElementContent(
     }
 
     if (unterminatedQuoteCharCode !== null) {
-      if (nextCharCode === unterminatedQuoteCharCode) {
-        if (!isNextCharEscapedByPrecedingString(rawContentCharCodes)) {
-          // The quote character is not escaped, so we can now consider the quote as terminated.
-          unterminatedQuoteCharCode = null;
-        }
+      if (isBackSlash(nextCharCode) && !isNextQuoteCharEscaped) {
+        isNextQuoteCharEscaped = true;
+      } else if (
+        nextCharCode === unterminatedQuoteCharCode &&
+        !isNextQuoteCharEscaped
+      ) {
+        // The quote character is not escaped, so we can now consider the quote as terminated.
+        unterminatedQuoteCharCode = null;
+        isNextQuoteCharEscaped = false;
+      } else {
+        isNextQuoteCharEscaped = false;
       }
     } else if (
       (isScript && isScriptQuoteChar(nextCharCode)) ||
