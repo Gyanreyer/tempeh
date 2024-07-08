@@ -1,4 +1,4 @@
-import { createReadStream } from "fs";
+import { open } from "node:fs/promises";
 import {
   BACK_SLASH,
   FWD_SLASH,
@@ -79,86 +79,86 @@ export const LexerTokenType = Object.freeze({
  * @typedef {() => undefined | LexerToken<"ERROR">} UnreadCharFn
  */
 
-const EOF = Symbol("EOF");
+// A buffer size of 128 bytes offers a decent balance between read performance and memory usage.
+// Increasing further can speed things up more by reducing how many I/O operations we need to do to read a file, but the returns
+// get more and more diminishing as you go.
+const MAX_CHAR_BUFFER_SIZE = 128;
 
 /**
  * @param {string} filePath
  * @returns {AsyncGenerator<LexerToken, void>}
  */
 export async function* lex(filePath) {
-  const readStream = createReadStream(filePath);
-
   /**
-   * @type {number | undefined}
+   * @type {import("node:fs/promises").FileHandle | null}
    */
-  let lastReadCharCode = undefined;
-  let hasUnreadLastChar = false;
+  let fileHandle = null;
 
-  let line = 1;
-  let lastReadCharLine = 1;
+  try {
+    let hasUnreadLastChar = false;
+    /**
+     * @type {number | null}
+     */
+    let lastReadCharCode = null;
 
-  let column = 0;
-  let lastReadCharColumn = 0;
+    let line = 1;
+    let lastReadCharLine = 1;
 
-  // Waits for the stream to emit a readable event,
-  // indicating that there is more data available to read via a read() call.
-  const waitForReadable = () =>
-    /** @type {Promise<Error | EOF | null>} */ (
-      new Promise((resolve) => {
-        function onEnd() {
-          readStream.off("readable", onReadable);
-          readStream.off("error", onError);
-          readStream.off("end", onEnd);
-          resolve(EOF);
-        }
-        function onReadable() {
-          readStream.off("readable", onReadable);
-          readStream.off("error", onError);
-          readStream.off("end", onEnd);
-          resolve(null);
-        }
-        /**
-         * @param {Error} err
-         */
-        function onError(err) {
-          readStream.off("readable", onReadable);
-          readStream.off("error", onError);
-          readStream.off("end", onEnd);
-          resolve(err);
-        }
+    let column = 0;
+    let lastReadCharColumn = 0;
 
-        readStream.on("readable", onReadable);
-        readStream.on("error", onError);
-        readStream.on("end", onEnd);
-      })
-    );
+    // The last byte is reserved for unread characters
+    const charBufferView = new Uint8Array(MAX_CHAR_BUFFER_SIZE);
+    let readCharIndex = MAX_CHAR_BUFFER_SIZE;
+    let readableCharCount = 0;
 
-  /**
-   * @type {PullCharFn}
-   */
-  const pullChar = async () => {
-    /** @type {number} */
-    let pulledCodePoint;
-    if (hasUnreadLastChar) {
-      hasUnreadLastChar = false;
-      if (lastReadCharCode === undefined) {
-        return {
-          ch: -1,
-          l: line,
-          c: column,
-          terminatorToken: {
-            type: LexerTokenType.ERROR,
-            value: "Cannot unread a character that has not been read",
-            l: line,
-            c: column,
-          },
-        };
+    fileHandle = await open(filePath, "r");
+
+    /**
+     * @returns {Promise<number | null>} Returns the next character code point or null if EOF
+     */
+    const readNextChar = async () => {
+      if (!fileHandle) {
+        return null;
       }
-      pulledCodePoint = lastReadCharCode;
-    } else {
-      if (!readStream.readable || readStream.readableLength === 0) {
-        const waitForReadableResult = await waitForReadable();
-        if (waitForReadableResult === EOF) {
+
+      ++readCharIndex;
+
+      if (readCharIndex < readableCharCount) {
+        return charBufferView[readCharIndex] || null;
+      }
+
+      readCharIndex = 0;
+
+      const readResult = await fileHandle.read(
+        charBufferView,
+        0,
+        MAX_CHAR_BUFFER_SIZE
+      );
+      readableCharCount = readResult.bytesRead;
+      if (readableCharCount === 0) {
+        return null;
+      }
+
+      return charBufferView[readCharIndex];
+    };
+
+    /**
+     * @type {PullCharFn}
+     */
+    const pullChar = async () => {
+      /**
+       * @type {number}
+       */
+      let pulledCodePoint;
+
+      if (hasUnreadLastChar && lastReadCharCode !== null) {
+        // If we unread the last character, we'll just re-use it instead of reading a new one.
+        hasUnreadLastChar = false;
+        pulledCodePoint = lastReadCharCode;
+      } else {
+        const leadingCharByte = await readNextChar();
+        if (leadingCharByte === null) {
           return {
             ch: -1,
             l: line,
@@ -169,14 +169,85 @@ export async function* lex(filePath) {
               c: column,
             },
           };
-        } else if (waitForReadableResult instanceof Error) {
+        }
+
+        // Bytes >= 0x80 are the start of a multi-byte sequence
+        if (leadingCharByte < 0x80) {
+          pulledCodePoint = leadingCharByte;
+        } else if (leadingCharByte >= 0xc0 && leadingCharByte <= 0xdf) {
+          // 2-byte sequence
+          const nextByte = await readNextChar();
+          if (!nextByte) {
+            return {
+              ch: -1,
+              l: line,
+              c: column,
+              terminatorToken: {
+                type: LexerTokenType.EOF,
+                l: line,
+                c: column,
+              },
+            };
+          }
+
+          pulledCodePoint = ((leadingCharByte & 0x1f) << 6) | (nextByte & 0x3f);
+        } else if (leadingCharByte >= 0xe0 && leadingCharByte <= 0xef) {
+          // 3-byte sequence
+          const byte2 = await readNextChar();
+          const byte3 = await readNextChar();
+
+          if (!byte2 || !byte3) {
+            return {
+              ch: -1,
+              l: line,
+              c: column,
+              terminatorToken: {
+                type: LexerTokenType.EOF,
+                l: line,
+                c: column,
+              },
+            };
+          }
+
+          pulledCodePoint =
+            ((leadingCharByte & 0x0f) << 12) |
+            ((byte2 & 0x3f) << 6) |
+            (byte3 & 0x3f);
+        } else if (leadingCharByte >= 0xf0 && leadingCharByte <= 0xf7) {
+          // 4-byte sequence
+          const byte2 = await readNextChar();
+          const byte3 = await readNextChar();
+          const byte4 = await readNextChar();
+          if (!byte2 || !byte3 || !byte4) {
+            return {
+              ch: -1,
+              l: line,
+              c: column,
+              terminatorToken: {
+                type: LexerTokenType.EOF,
+                l: line,
+                c: column,
+              },
+            };
+          }
+          pulledCodePoint =
+            ((leadingCharByte & 0x07) << 18) |
+            ((byte2 & 0x3f) << 12) |
+            ((byte3 & 0x3f) << 6) |
+            (byte4 & 0x3f);
+        } else {
+          console.log(
+            "Invalid UTF-8 leading byte: ",
+            leadingCharByte,
+            `${filePath}:${line}:${column}`
+          );
           return {
             ch: -1,
             l: line,
             c: column,
             terminatorToken: {
               type: LexerTokenType.ERROR,
-              value: waitForReadableResult.message,
+              value: `Invalid UTF-8 leading byte: ${leadingCharByte}`,
               l: line,
               c: column,
             },
@@ -184,160 +255,70 @@ export async function* lex(filePath) {
         }
       }
 
-      /** @type {Buffer} */
-      const leadingCharByteBuf = readStream.read(1);
+      lastReadCharLine = line;
+      lastReadCharColumn = column;
 
-      if (!leadingCharByteBuf) {
+      lastReadCharCode = pulledCodePoint;
+
+      if (isLineBreak(pulledCodePoint)) {
+        ++line;
+        column = 0;
         return {
-          ch: -1,
+          ch: pulledCodePoint,
           l: line,
-          c: column,
-          terminatorToken: {
-            type: LexerTokenType.EOF,
-            l: line,
-            c: column,
-          },
+          c: column + 1,
+          terminatorToken: null,
         };
       }
 
-      const leadingCharByte = new Uint8Array(leadingCharByteBuf)[0];
-
-      // Bytes >= 0x80 are the start of a multi-byte sequence
-      if (leadingCharByte < 0x80) {
-        pulledCodePoint = leadingCharByte;
-      } else if (leadingCharByte >= 0xc0 && leadingCharByte <= 0xdf) {
-        // 2-byte sequence
-        const nextByteBuf = readStream.read(1);
-        if (!nextByteBuf) {
-          return {
-            ch: -1,
-            l: line,
-            c: column,
-            terminatorToken: {
-              type: LexerTokenType.EOF,
-              l: line,
-              c: column,
-            },
-          };
-        }
-        let nextByte = new Uint8Array(nextByteBuf)[0];
-        pulledCodePoint = ((leadingCharByte & 0x1f) << 6) | (nextByte & 0x3f);
-      } else if (leadingCharByte >= 0xe0 && leadingCharByte <= 0xef) {
-        // 3-byte sequence
-        const nextBytesBuf = readStream.read(2);
-        if (!nextBytesBuf) {
-          return {
-            ch: -1,
-            l: line,
-            c: column,
-            terminatorToken: {
-              type: LexerTokenType.EOF,
-              l: line,
-              c: column,
-            },
-          };
-        }
-        const nextBytes = new Uint8Array(nextBytesBuf);
-        pulledCodePoint =
-          ((leadingCharByte & 0x0f) << 12) |
-          ((nextBytes[0] & 0x3f) << 6) |
-          (nextBytes[1] & 0x3f);
-      } else if (leadingCharByte >= 0xf0 && leadingCharByte <= 0xf7) {
-        // 4-byte sequence
-        const nextBytesBuf = readStream.read(3);
-        if (!nextBytesBuf) {
-          return {
-            ch: -1,
-            l: line,
-            c: column,
-            terminatorToken: {
-              type: LexerTokenType.EOF,
-              l: line,
-              c: column,
-            },
-          };
-        }
-        const nextBytes = new Uint8Array(nextBytesBuf);
-        pulledCodePoint =
-          ((leadingCharByte & 0x07) << 18) |
-          ((nextBytes[0] & 0x3f) << 12) |
-          ((nextBytes[1] & 0x3f) << 6) |
-          (nextBytes[2] & 0x3f);
-      } else {
-        console.log(
-          "Invalid UTF-8 leading byte: ",
-          leadingCharByte,
-          `${filePath}:${line}:${column}`
-        );
-        return {
-          ch: -1,
-          l: line,
-          c: column,
-          terminatorToken: {
-            type: LexerTokenType.ERROR,
-            value: `Invalid UTF-8 leading byte: ${leadingCharByte}`,
-            l: line,
-            c: column,
-          },
-        };
-      }
-    }
-
-    lastReadCharLine = line;
-    lastReadCharColumn = column;
-
-    lastReadCharCode = pulledCodePoint;
-
-    if (isLineBreak(pulledCodePoint)) {
-      ++line;
-      column = 0;
       return {
         ch: pulledCodePoint,
         l: line,
-        c: column + 1,
+        c: ++column,
         terminatorToken: null,
       };
-    }
-
-    return {
-      ch: pulledCodePoint,
-      l: lastReadCharLine,
-      c: ++column,
-      terminatorToken: null,
     };
-  };
 
-  /**
-   * @type {UnreadCharFn}
-   */
-  const unreadChar = () => {
-    if (lastReadCharCode) {
-      line = lastReadCharLine;
-      column = lastReadCharColumn;
-      hasUnreadLastChar = true;
-    } else {
-      return {
-        type: LexerTokenType.ERROR,
-        value: "Cannot unread a character that has not been read",
-        l: line,
-        c: column,
-      };
+    /**
+     * @type {UnreadCharFn}
+     */
+    const unreadChar = () => {
+      if (!hasUnreadLastChar) {
+        line = lastReadCharLine;
+        column = lastReadCharColumn;
+        hasUnreadLastChar = true;
+      } else {
+        return {
+          type: LexerTokenType.ERROR,
+          value: "Cannot unread a character that has not been read",
+          l: line,
+          c: column,
+        };
+      }
+    };
+
+    /**
+     * @type {LexerStateGenerator | null}
+     */
+    let tokenGenerator = lexTextContent(pullChar, unreadChar);
+    while (tokenGenerator) {
+      const { value, done } = await tokenGenerator.next();
+      if (done) {
+        tokenGenerator = value;
+      } else {
+        yield value;
+      }
     }
-
-    return undefined;
-  };
-
-  /**
-   * @type {LexerStateGenerator | null}
-   */
-  let tokenGenerator = lexTextContent(pullChar, unreadChar);
-  while (tokenGenerator) {
-    const { value, done } = await tokenGenerator.next();
-    if (done) {
-      tokenGenerator = value;
-    } else {
-      yield value;
-    }
+  } catch (err) {
+    const errorMessage = err instanceof Error ? err.message : String(err);
+    yield {
+      type: LexerTokenType.ERROR,
+      value: errorMessage,
+      l: 0,
+      c: 0,
+    };
+  } finally {
+    await fileHandle?.close();
   }
 }
 
