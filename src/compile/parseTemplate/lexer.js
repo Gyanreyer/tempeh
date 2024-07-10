@@ -79,10 +79,11 @@ export const LexerTokenType = Object.freeze({
  * @typedef {() => undefined | LexerToken<"ERROR">} UnreadCharFn
  */
 
-// A buffer size of 128 bytes offers a decent balance between read performance and memory usage.
+// A buffer size of 256 bytes offers a decent balance between read performance and memory usage.
 // Increasing further can speed things up more by reducing how many I/O operations we need to do to read a file, but the returns
 // get more and more diminishing as you go.
-const MAX_CHAR_BUFFER_SIZE = 128;
+// This needs to be a factor of 2.
+const MAX_CHAR_BUFFER_SIZE = 256;
 
 /**
  * @param {string} filePath
@@ -107,12 +108,53 @@ export async function* lex(filePath) {
     let column = 0;
     let lastReadCharColumn = 0;
 
-    // The last byte is reserved for unread characters
-    const charBufferView = new Uint8Array(MAX_CHAR_BUFFER_SIZE);
-    let readCharIndex = MAX_CHAR_BUFFER_SIZE;
-    let readableCharCount = 0;
+    const charBuffer = new ArrayBuffer(MAX_CHAR_BUFFER_SIZE);
+    const charBufferView = new DataView(charBuffer);
 
     fileHandle = await open(filePath, "r");
+
+    const initialReadResult = await fileHandle.read(charBufferView);
+    let readableCharCount = initialReadResult.bytesRead;
+
+    let nextReadOffset = 0;
+
+    const bomByteSet1 = charBufferView.getUint16(0);
+    const bomByteSet2 = charBufferView.getUint16(2);
+
+    let isLittleEndian = false;
+    /**
+     * @type {8 | 16 | 32}
+     */
+    let charByteSize = 8;
+
+    debugger;
+
+    if (bomByteSet1 === 0xefbb && bomByteSet2 >> 8 === 0xbf) {
+      // This is just a UTF-8 BOM; we can keep reading like normal, just skip those initial 3 bytes bytes
+      nextReadOffset = 3;
+    } else if (bomByteSet1 === 0xfeff) {
+      // UTF-16 big endian
+      charByteSize = 16;
+      nextReadOffset = 2;
+    } else if (bomByteSet1 === 0xfffe) {
+      isLittleEndian = true;
+
+      if (bomByteSet2 === 0x0000) {
+        // UTF-32 little endian
+        charByteSize = 32;
+        nextReadOffset = 4;
+      } else {
+        // UTF-16 little endian
+        charByteSize = 16;
+        nextReadOffset = 2;
+      }
+    } else if (bomByteSet1 === 0x0000 && bomByteSet2 === 0xfeff) {
+      // UTF-32 big endian
+      charByteSize = 32;
+      nextReadOffset = 4;
+    }
+
+    const readOffsetIncrement = charByteSize >> 3;
 
     /**
      * @returns {Promise<number | null>} Returns the next character code point or null if EOF
@@ -122,25 +164,31 @@ export async function* lex(filePath) {
         return null;
       }
 
-      ++readCharIndex;
+      if (nextReadOffset < readableCharCount) {
+        const readOffset = nextReadOffset;
+        nextReadOffset += readOffsetIncrement;
 
-      if (readCharIndex < readableCharCount) {
-        return charBufferView[readCharIndex] || null;
+        switch (charByteSize) {
+          case 8: {
+            return charBufferView.getUint8(readOffset) || null;
+          }
+          case 16: {
+            return charBufferView.getUint16(readOffset, isLittleEndian) || null;
+          }
+          case 32: {
+            return charBufferView.getUint32(readOffset, isLittleEndian) || null;
+          }
+        }
       }
 
-      readCharIndex = 0;
-
-      const readResult = await fileHandle.read(
-        charBufferView,
-        0,
-        MAX_CHAR_BUFFER_SIZE
-      );
+      const readResult = await fileHandle.read(charBufferView);
       readableCharCount = readResult.bytesRead;
       if (readableCharCount === 0) {
         return null;
       }
 
-      return charBufferView[readCharIndex];
+      nextReadOffset = 0;
+      return readNextChar();
     };
 
     /**
@@ -171,87 +219,90 @@ export async function* lex(filePath) {
           };
         }
 
-        // Bytes >= 0x80 are the start of a multi-byte sequence
-        if (leadingCharByte < 0x80) {
-          pulledCodePoint = leadingCharByte;
-        } else if (leadingCharByte >= 0xc0 && leadingCharByte <= 0xdf) {
-          // 2-byte sequence
-          const nextByte = await readNextChar();
-          if (!nextByte) {
+        if (charByteSize === 8) {
+          // For utf-8, we need to perform special handling for multi-byte sequences
+          if (leadingCharByte < 0x80) {
+            // Single-byte characters are < 0x80
+            pulledCodePoint = leadingCharByte;
+          } else if (leadingCharByte >= 0xc0 && leadingCharByte <= 0xdf) {
+            // 2-byte sequence
+            const nextByte = await readNextChar();
+            if (!nextByte) {
+              return {
+                ch: -1,
+                l: line,
+                c: column,
+                terminatorToken: {
+                  type: LexerTokenType.EOF,
+                  l: line,
+                  c: column,
+                },
+              };
+            }
+
+            pulledCodePoint =
+              ((leadingCharByte & 0x1f) << 6) | (nextByte & 0x3f);
+          } else if (leadingCharByte >= 0xe0 && leadingCharByte <= 0xef) {
+            // 3-byte sequence
+            const byte2 = await readNextChar();
+            const byte3 = await readNextChar();
+
+            if (!byte2 || !byte3) {
+              return {
+                ch: -1,
+                l: line,
+                c: column,
+                terminatorToken: {
+                  type: LexerTokenType.EOF,
+                  l: line,
+                  c: column,
+                },
+              };
+            }
+
+            pulledCodePoint =
+              ((leadingCharByte & 0x0f) << 12) |
+              ((byte2 & 0x3f) << 6) |
+              (byte3 & 0x3f);
+          } else if (leadingCharByte >= 0xf0 && leadingCharByte <= 0xf7) {
+            // 4-byte sequence
+            const byte2 = await readNextChar();
+            const byte3 = await readNextChar();
+            const byte4 = await readNextChar();
+            if (!byte2 || !byte3 || !byte4) {
+              return {
+                ch: -1,
+                l: line,
+                c: column,
+                terminatorToken: {
+                  type: LexerTokenType.EOF,
+                  l: line,
+                  c: column,
+                },
+              };
+            }
+            pulledCodePoint =
+              ((leadingCharByte & 0x07) << 18) |
+              ((byte2 & 0x3f) << 12) |
+              ((byte3 & 0x3f) << 6) |
+              (byte4 & 0x3f);
+          } else {
             return {
               ch: -1,
               l: line,
               c: column,
               terminatorToken: {
-                type: LexerTokenType.EOF,
+                type: LexerTokenType.ERROR,
+                value: `Invalid UTF-8 leading byte: ${leadingCharByte}`,
                 l: line,
                 c: column,
               },
             };
           }
-
-          pulledCodePoint = ((leadingCharByte & 0x1f) << 6) | (nextByte & 0x3f);
-        } else if (leadingCharByte >= 0xe0 && leadingCharByte <= 0xef) {
-          // 3-byte sequence
-          const byte2 = await readNextChar();
-          const byte3 = await readNextChar();
-
-          if (!byte2 || !byte3) {
-            return {
-              ch: -1,
-              l: line,
-              c: column,
-              terminatorToken: {
-                type: LexerTokenType.EOF,
-                l: line,
-                c: column,
-              },
-            };
-          }
-
-          pulledCodePoint =
-            ((leadingCharByte & 0x0f) << 12) |
-            ((byte2 & 0x3f) << 6) |
-            (byte3 & 0x3f);
-        } else if (leadingCharByte >= 0xf0 && leadingCharByte <= 0xf7) {
-          // 4-byte sequence
-          const byte2 = await readNextChar();
-          const byte3 = await readNextChar();
-          const byte4 = await readNextChar();
-          if (!byte2 || !byte3 || !byte4) {
-            return {
-              ch: -1,
-              l: line,
-              c: column,
-              terminatorToken: {
-                type: LexerTokenType.EOF,
-                l: line,
-                c: column,
-              },
-            };
-          }
-          pulledCodePoint =
-            ((leadingCharByte & 0x07) << 18) |
-            ((byte2 & 0x3f) << 12) |
-            ((byte3 & 0x3f) << 6) |
-            (byte4 & 0x3f);
         } else {
-          console.log(
-            "Invalid UTF-8 leading byte: ",
-            leadingCharByte,
-            `${filePath}:${line}:${column}`
-          );
-          return {
-            ch: -1,
-            l: line,
-            c: column,
-            terminatorToken: {
-              type: LexerTokenType.ERROR,
-              value: `Invalid UTF-8 leading byte: ${leadingCharByte}`,
-              l: line,
-              c: column,
-            },
-          };
+          // utf-16 also uses variable-width encoding, but it will just work itself out
+          // if we just read each half of the character separately; utf-32 is fixed-width
+          pulledCodePoint = leadingCharByte;
         }
       }
 

@@ -6,7 +6,20 @@ import { parseTemplate } from "./parseTemplate.js";
 import { writeFileSync } from "node:fs";
 
 /**
- * @typedef {import("./parseTemplate.js").TemplateDataAST} TemplateDataAST
+ * @template T
+ * @param {AsyncGenerator<T>} asyncGenerator
+ * @returns {Promise<T[]>}
+ */
+const asyncGeneratorToArray = async (asyncGenerator) => {
+  const arr = [];
+  for await (const item of asyncGenerator) {
+    arr.push(item);
+  }
+  return arr;
+};
+
+/**
+ * @import { TmphNode } from './templateData';
  */
 
 describe("parseTemplate", () => {
@@ -16,218 +29,217 @@ describe("parseTemplate", () => {
       import.meta
     );
 
-    const parsedTemplateData = await parseTemplate(templateSourceFilePath);
+    const parsedTemplateNodes = await asyncGeneratorToArray(
+      parseTemplate(templateSourceFilePath)
+    );
 
     assert.deepStrictEqual(
-      parsedTemplateData,
-      /** @satisfies {TemplateDataAST} */ ({
-        src: "/Users/ryangeyer/Projects/tempeh/test/fixtures/simpleComponent.tmph.html",
-        nodes: [
-          {
-            tagName: "div",
-            attributes: [
-              {
-                name: "data-this",
-                value: "attr_value_has_no_quotes",
-                l: 1,
-                c: 6,
-              },
-            ],
-            children: [
-              {
-                textContent: "Hello, world!",
-                l: 1,
-                c: 41,
-              },
-            ],
-            l: 1,
-            c: 2,
-          },
-          {
-            textContent: "\nSome root-level text\n",
-            l: 2,
-            c: 1,
-          },
-          {
-            tagName: "button",
-            attributes: [
-              {
-                name: "role",
-                value: "button",
-                l: 3,
-                c: 9,
-              },
-              {
-                name: "aria-disabled",
-                value: "",
-                l: 3,
-                c: 23,
-              },
-              {
-                name: "disabled",
-                value: "",
-                l: 3,
-                c: 37,
-              },
-              {
-                name: "aria-label",
-                value: "My custom label",
-                l: 3,
-                c: 46,
-              },
-            ],
-            children: [
-              {
-                textContent: "\n  Click me\n  ",
-                l: 4,
-                c: 1,
-              },
-              {
-                tagName: "svg",
-                attributes: [
-                  {
-                    name: "viewBox",
-                    value: "0 0 100 100",
-                    l: 5,
-                    c: 8,
-                  },
-                  {
-                    name: "xmlns",
-                    value: "http://www.w3.org/2000/svg",
-                    l: 5,
-                    c: 30,
-                  },
-                  {
-                    name: "aria-hidden",
-                    value: "",
-                    l: 5,
-                    c: 65,
-                  },
-                ],
-                children: [
-                  {
-                    textContent: "\n    ",
-                    l: 6,
-                    c: 1,
-                  },
-                  {
-                    tagName: "circle",
-                    attributes: [
-                      {
-                        name: "cx",
-                        value: "50",
-                        l: 6,
-                        c: 13,
-                      },
-                      {
-                        name: "cy",
-                        value: "50",
-                        l: 6,
-                        c: 21,
-                      },
-                      {
-                        name: "r",
-                        value: "50",
-                        l: 6,
-                        c: 29,
-                      },
-                    ],
-                    l: 6,
-                    c: 6,
-                  },
-                  {
-                    textContent: "\n  ",
-                    l: 7,
-                    c: 1,
-                  },
-                ],
-                l: 5,
-                c: 4,
-              },
-              {
-                textContent: "\n",
-                l: 8,
-                c: 1,
-              },
-            ],
-            l: 3,
-            c: 2,
-          },
-          {
-            textContent: "\n",
-            l: 9,
-            c: 1,
-          },
-          {
-            tagName: "p",
-            children: [
-              {
-                textContent: "Spaces should ",
-                l: 9,
-                c: 4,
-              },
-              {
-                tagName: "_",
-                children: [
-                  {
-                    textContent: "be",
-                    l: 9,
-                    c: 21,
-                  },
-                ],
-                l: 9,
-                c: 19,
-              },
-              {
-                textContent: " ",
-                l: 9,
-                c: 27,
-              },
-              {
-                tagName: "em",
-                children: [
-                  {
-                    textContent: "preserved",
-                    l: 9,
-                    c: 32,
-                  },
-                ],
-                l: 9,
-                c: 29,
-              },
-              {
-                textContent: "    ",
-                l: 9,
-                c: 46,
-              },
-              {
-                tagName: "strong",
-                children: [
-                  {
-                    textContent: "between\n    tags\n  ",
-                    l: 9,
-                    c: 58,
-                  },
-                ],
-                l: 9,
-                c: 51,
-              },
-              {
-                textContent: "\n",
-                l: 12,
-                c: 1,
-              },
-            ],
-            l: 9,
-            c: 2,
-          },
-          {
-            textContent: "\n",
-            l: 13,
-            c: 1,
-          },
-        ],
-      })
+      parsedTemplateNodes,
+      /** @satisfies {TmphNode[]} */ ([
+        {
+          tagName: "div",
+          attributes: [
+            {
+              name: "data-this",
+              value: "attr_value_has_no_quotes",
+              l: 1,
+              c: 6,
+            },
+          ],
+          children: [
+            {
+              textContent: "Hello, world!",
+              l: 1,
+              c: 41,
+            },
+          ],
+          l: 1,
+          c: 2,
+        },
+        {
+          textContent: "\nSome root-level text\n",
+          l: 2,
+          c: 1,
+        },
+        {
+          tagName: "button",
+          attributes: [
+            {
+              name: "role",
+              value: "button",
+              l: 3,
+              c: 9,
+            },
+            {
+              name: "aria-disabled",
+              value: "",
+              l: 3,
+              c: 23,
+            },
+            {
+              name: "disabled",
+              value: "",
+              l: 3,
+              c: 37,
+            },
+            {
+              name: "aria-label",
+              value: "My custom label",
+              l: 3,
+              c: 46,
+            },
+          ],
+          children: [
+            {
+              textContent: "\n  Click me\n  ",
+              l: 4,
+              c: 1,
+            },
+            {
+              tagName: "svg",
+              attributes: [
+                {
+                  name: "viewBox",
+                  value: "0 0 100 100",
+                  l: 5,
+                  c: 8,
+                },
+                {
+                  name: "xmlns",
+                  value: "http://www.w3.org/2000/svg",
+                  l: 5,
+                  c: 30,
+                },
+                {
+                  name: "aria-hidden",
+                  value: "",
+                  l: 5,
+                  c: 65,
+                },
+              ],
+              children: [
+                {
+                  textContent: "\n    ",
+                  l: 6,
+                  c: 1,
+                },
+                {
+                  tagName: "circle",
+                  attributes: [
+                    {
+                      name: "cx",
+                      value: "50",
+                      l: 6,
+                      c: 13,
+                    },
+                    {
+                      name: "cy",
+                      value: "50",
+                      l: 6,
+                      c: 21,
+                    },
+                    {
+                      name: "r",
+                      value: "50",
+                      l: 6,
+                      c: 29,
+                    },
+                  ],
+                  l: 6,
+                  c: 6,
+                },
+                {
+                  textContent: "\n  ",
+                  l: 7,
+                  c: 1,
+                },
+              ],
+              l: 5,
+              c: 4,
+            },
+            {
+              textContent: "\n",
+              l: 8,
+              c: 1,
+            },
+          ],
+          l: 3,
+          c: 2,
+        },
+        {
+          textContent: "\n",
+          l: 9,
+          c: 1,
+        },
+        {
+          tagName: "p",
+          children: [
+            {
+              textContent: "Spaces should ",
+              l: 9,
+              c: 4,
+            },
+            {
+              tagName: "_",
+              children: [
+                {
+                  textContent: "be",
+                  l: 9,
+                  c: 21,
+                },
+              ],
+              l: 9,
+              c: 19,
+            },
+            {
+              textContent: " ",
+              l: 9,
+              c: 27,
+            },
+            {
+              tagName: "em",
+              children: [
+                {
+                  textContent: "preserved",
+                  l: 9,
+                  c: 32,
+                },
+              ],
+              l: 9,
+              c: 29,
+            },
+            {
+              textContent: "    ",
+              l: 9,
+              c: 46,
+            },
+            {
+              tagName: "strong",
+              children: [
+                {
+                  textContent: "between\n    tags\n  ",
+                  l: 9,
+                  c: 58,
+                },
+              ],
+              l: 9,
+              c: 51,
+            },
+            {
+              textContent: "\n",
+              l: 12,
+              c: 1,
+            },
+          ],
+          l: 9,
+          c: 2,
+        },
+        {
+          textContent: "\n",
+          l: 13,
+          c: 1,
+        },
+      ])
     );
   });
 
@@ -236,16 +248,13 @@ describe("parseTemplate", () => {
       "../../../test/fixtures/inlineSubComponents.tmph.html",
       import.meta
     );
-    const parsedTemplateData = await parseTemplate(templateSourceFilePath);
-
-    writeFileSync(
-      "parsedTemplateData.json",
-      JSON.stringify(parsedTemplateData, null, 2)
+    const parsedTemplateNodes = await asyncGeneratorToArray(
+      parseTemplate(templateSourceFilePath)
     );
 
-    assert.deepStrictEqual(parsedTemplateData, {
-      src: "/Users/ryangeyer/Projects/tempeh/test/fixtures/inlineSubComponents.tmph.html",
-      nodes: [
+    assert.deepStrictEqual(
+      parsedTemplateNodes,
+      /** @satisfies {TmphNode[]} */ ([
         {
           tagName: "ul",
           children: [
@@ -511,8 +520,8 @@ describe("parseTemplate", () => {
           l: 21,
           c: 1,
         },
-      ],
-    });
+      ])
+    );
   });
 
   test("should parse a component file with styles", async () => {
@@ -520,11 +529,14 @@ describe("parseTemplate", () => {
       "../../../test/fixtures/componentWithStyles.tmph.html",
       import.meta
     );
-    const parsedTemplateData = await parseTemplate(templateSourceFilePath);
 
-    assert.deepStrictEqual(parsedTemplateData, {
-      src: "/Users/ryangeyer/Projects/tempeh/test/fixtures/componentWithStyles.tmph.html",
-      nodes: [
+    const parsedTemplateNodes = await asyncGeneratorToArray(
+      parseTemplate(templateSourceFilePath)
+    );
+
+    assert.deepStrictEqual(
+      parsedTemplateNodes,
+      /** @satisfies {TmphNode[]} */ ([
         {
           tagName: "main",
           children: [
@@ -644,8 +656,8 @@ describe("parseTemplate", () => {
           l: 27,
           c: 1,
         },
-      ],
-    });
+      ])
+    );
   });
 
   test("should parse a component file with scripts", async () => {
@@ -653,11 +665,13 @@ describe("parseTemplate", () => {
       "../../../test/fixtures/componentWithScripts.tmph.html",
       import.meta
     );
-    const parsedTemplateData = await parseTemplate(templateSourceFilePath);
+    const parsedTemplateNodes = await asyncGeneratorToArray(
+      parseTemplate(templateSourceFilePath)
+    );
 
-    assert.deepStrictEqual(parsedTemplateData, {
-      src: "/Users/ryangeyer/Projects/tempeh/test/fixtures/componentWithScripts.tmph.html",
-      nodes: [
+    assert.deepStrictEqual(
+      parsedTemplateNodes,
+      /** @satisfies {TmphNode[]} */ ([
         {
           tagName: "button",
           children: [
@@ -800,8 +814,8 @@ describe("parseTemplate", () => {
           l: 26,
           c: 1,
         },
-      ],
-    });
+      ])
+    );
   });
 
   test("should parse a layout component file", async () => {
@@ -809,131 +823,130 @@ describe("parseTemplate", () => {
       "../../../test/fixtures/layout.tmph.html",
       import.meta
     );
-    const parsedTemplateData = await parseTemplate(templateSourceFilePath);
+    const parsedTemplateNodes = await asyncGeneratorToArray(
+      parseTemplate(templateSourceFilePath)
+    );
 
     assert.deepStrictEqual(
-      parsedTemplateData,
-      /** @type {import("./parseTemplate.js").TemplateDataAST} */ ({
-        src: templateSourceFilePath,
-        nodes: [
-          {
-            textContent: "<!DOCTYPE html>\n",
-            l: 1,
-            c: 1,
-          },
-          {
-            tagName: "html",
-            attributes: [
-              {
-                name: "lang",
-                value: "en",
-                l: 2,
-                c: 7,
-              },
-            ],
-            children: [
-              {
-                textContent: "\n  ",
-                l: 3,
-                c: 1,
-              },
-              {
-                tagName: "head",
-                children: [
-                  {
-                    textContent: "\n    ",
-                    l: 4,
-                    c: 1,
-                  },
-                  {
-                    tagName: "meta",
-                    attributes: [
-                      {
-                        name: "charset",
-                        value: "UTF-8",
-                        l: 4,
-                        c: 11,
-                      },
-                    ],
-                    l: 4,
-                    c: 6,
-                  },
-                  {
-                    textContent: "\n    ",
-                    l: 5,
-                    c: 1,
-                  },
-                  {
-                    tagName: "meta",
-                    attributes: [
-                      {
-                        name: "name",
-                        value: "viewport",
-                        l: 5,
-                        c: 11,
-                      },
-                      {
-                        name: "content",
-                        value: "width=device-width",
-                        l: 5,
-                        c: 27,
-                      },
-                    ],
-                    l: 5,
-                    c: 6,
-                  },
-                  {
-                    textContent: "\n  ",
-                    l: 6,
-                    c: 1,
-                  },
-                ],
-                l: 3,
-                c: 4,
-              },
-              {
-                textContent: "\n  ",
-                l: 7,
-                c: 1,
-              },
-              {
-                tagName: "body",
-                children: [
-                  {
-                    textContent: "\n    ",
-                    l: 8,
-                    c: 1,
-                  },
-                  {
-                    tagName: "slot",
-                    l: 8,
-                    c: 6,
-                  },
-                  {
-                    textContent: "\n  ",
-                    l: 9,
-                    c: 1,
-                  },
-                ],
-                l: 7,
-                c: 4,
-              },
-              {
-                textContent: "\n",
-                l: 10,
-                c: 1,
-              },
-            ],
-            l: 2,
-            c: 2,
-          },
-          {
-            textContent: "\n",
-            l: 11,
-            c: 1,
-          },
-        ],
-      })
+      parsedTemplateNodes,
+      /** @satisfies {TmphNode[]} */ ([
+        {
+          textContent: "<!DOCTYPE html>\n",
+          l: 1,
+          c: 1,
+        },
+        {
+          tagName: "html",
+          attributes: [
+            {
+              name: "lang",
+              value: "en",
+              l: 2,
+              c: 7,
+            },
+          ],
+          children: [
+            {
+              textContent: "\n  ",
+              l: 3,
+              c: 1,
+            },
+            {
+              tagName: "head",
+              children: [
+                {
+                  textContent: "\n    ",
+                  l: 4,
+                  c: 1,
+                },
+                {
+                  tagName: "meta",
+                  attributes: [
+                    {
+                      name: "charset",
+                      value: "UTF-8",
+                      l: 4,
+                      c: 11,
+                    },
+                  ],
+                  l: 4,
+                  c: 6,
+                },
+                {
+                  textContent: "\n    ",
+                  l: 5,
+                  c: 1,
+                },
+                {
+                  tagName: "meta",
+                  attributes: [
+                    {
+                      name: "name",
+                      value: "viewport",
+                      l: 5,
+                      c: 11,
+                    },
+                    {
+                      name: "content",
+                      value: "width=device-width",
+                      l: 5,
+                      c: 27,
+                    },
+                  ],
+                  l: 5,
+                  c: 6,
+                },
+                {
+                  textContent: "\n  ",
+                  l: 6,
+                  c: 1,
+                },
+              ],
+              l: 3,
+              c: 4,
+            },
+            {
+              textContent: "\n  ",
+              l: 7,
+              c: 1,
+            },
+            {
+              tagName: "body",
+              children: [
+                {
+                  textContent: "\n    ",
+                  l: 8,
+                  c: 1,
+                },
+                {
+                  tagName: "slot",
+                  l: 8,
+                  c: 6,
+                },
+                {
+                  textContent: "\n  ",
+                  l: 9,
+                  c: 1,
+                },
+              ],
+              l: 7,
+              c: 4,
+            },
+            {
+              textContent: "\n",
+              l: 10,
+              c: 1,
+            },
+          ],
+          l: 2,
+          c: 2,
+        },
+        {
+          textContent: "\n",
+          l: 11,
+          c: 1,
+        },
+      ])
     );
   });
 
@@ -942,53 +955,52 @@ describe("parseTemplate", () => {
       "../../../test/fixtures/unicode.tmph.html",
       import.meta
     );
-    const parsedTemplateData = await parseTemplate(templateSourceFilePath);
+    const parsedTemplateNodes = await asyncGeneratorToArray(
+      parseTemplate(templateSourceFilePath)
+    );
 
     assert.deepStrictEqual(
-      parsedTemplateData,
-      /** @type {import("./parseTemplate.js").TemplateDataAST} */ ({
-        src: templateSourceFilePath,
-        nodes: [
-          {
-            tagName: "hey-👋",
-            l: 1,
-            c: 2,
-            children: [
-              {
-                textContent:
-                  "\n  This is a valid web 🕸️ component name. At least, according to spec 🤷",
-                l: 2,
-                c: 1,
-              },
-              {
-                tagName: "br",
-                l: 2,
-                c: 72,
-              },
-              {
-                textContent: "\n  Check this out: 𐐷𝄞ЦѾئሐᏠ",
-                l: 3,
-                c: 1,
-              },
-              {
-                tagName: "br",
-                l: 3,
-                c: 27,
-              },
-              {
-                textContent: "\n  Just flexing my unicode muscles 💪\n",
-                l: 4,
-                c: 1,
-              },
-            ],
-          },
-          {
-            textContent: "\n",
-            l: 6,
-            c: 1,
-          },
-        ],
-      })
+      parsedTemplateNodes,
+      /** @satisfies {TmphNode[]} */ ([
+        {
+          tagName: "hey-👋",
+          l: 1,
+          c: 2,
+          children: [
+            {
+              textContent:
+                "\n  This is a valid web 🕸️ component name. At least, according to spec 🤷",
+              l: 2,
+              c: 1,
+            },
+            {
+              tagName: "br",
+              l: 2,
+              c: 72,
+            },
+            {
+              textContent: "\n  Check this out: 𐐷𝄞ЦѾئሐᏠ",
+              l: 3,
+              c: 1,
+            },
+            {
+              tagName: "br",
+              l: 3,
+              c: 27,
+            },
+            {
+              textContent: "\n  Just flexing my unicode muscles 💪\n",
+              l: 4,
+              c: 1,
+            },
+          ],
+        },
+        {
+          textContent: "\n",
+          l: 6,
+          c: 1,
+        },
+      ])
     );
   });
 
@@ -997,20 +1009,118 @@ describe("parseTemplate", () => {
       "../../../test/fixtures/incompleteElement.tmph.html",
       import.meta
     );
-    const parsedTemplateData = await parseTemplate(templateSourceFilePath);
+    const parsedTemplateNodes = await asyncGeneratorToArray(
+      parseTemplate(templateSourceFilePath)
+    );
 
     assert.deepStrictEqual(
-      parsedTemplateData,
-      /** @satisfies {TemplateDataAST} */ ({
-        src: templateSourceFilePath,
-        nodes: [
-          {
-            textContent: '\nCheck this out: <a href="',
-            l: 2,
-            c: 1,
-          },
-        ],
-      })
+      parsedTemplateNodes,
+      /** @satisfies {TmphNode[]} */ ([
+        {
+          textContent: '\nCheck this out: <a href="',
+          l: 2,
+          c: 1,
+        },
+      ])
+    );
+  });
+
+  test("should parse a utf-8 file with a byte order marker", async () => {
+    const templateSourceFilePath = resolveRelativePath(
+      "../../../test/fixtures/utf8-bom.tmph.html",
+      import.meta
+    );
+    const parsedTemplateNodes = await asyncGeneratorToArray(
+      parseTemplate(templateSourceFilePath)
+    );
+
+    assert.deepStrictEqual(
+      parsedTemplateNodes,
+      /** @satisfies {TmphNode[]} */ ([
+        {
+          tagName: "div",
+          children: [
+            {
+              textContent: "Hello, world! 👋",
+              l: 1,
+              c: 6,
+            },
+          ],
+          l: 1,
+          c: 2,
+        },
+        {
+          textContent: "\n",
+          l: 2,
+          c: 1,
+        },
+      ])
+    );
+  });
+
+  test("should parse a utf-16 (little endian) file", async () => {
+    const templateSourceFilePath = resolveRelativePath(
+      "../../../test/fixtures/utf16-le.tmph.html",
+      import.meta
+    );
+    const parsedTemplateNodes = await asyncGeneratorToArray(
+      parseTemplate(templateSourceFilePath)
+    );
+
+    assert.deepStrictEqual(
+      parsedTemplateNodes,
+      /** @satisfies {TmphNode[]} */ ([
+        {
+          tagName: "div",
+          children: [
+            {
+              textContent: "Hello, world! 👋",
+              l: 1,
+              c: 6,
+            },
+          ],
+          l: 1,
+          c: 2,
+        },
+        {
+          textContent: "\n",
+          l: 2,
+          c: 1,
+        },
+      ])
+    );
+  });
+
+  test("should parse a utf-16 (big endian) file", async () => {
+    const templateSourceFilePath = resolveRelativePath(
+      "../../../test/fixtures/utf16-be.tmph.html",
+      import.meta
+    );
+    const parsedTemplateNodes = await asyncGeneratorToArray(
+      parseTemplate(templateSourceFilePath)
+    );
+
+    assert.deepStrictEqual(
+      parsedTemplateNodes,
+      /** @satisfies {TmphNode[]} */ ([
+        {
+          tagName: "div",
+          children: [
+            {
+              textContent: "Hello, world! 👋",
+              l: 1,
+              c: 6,
+            },
+          ],
+          l: 1,
+          c: 2,
+        },
+        {
+          textContent: "\n",
+          l: 2,
+          c: 1,
+        },
+      ])
     );
   });
 });
